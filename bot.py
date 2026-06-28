@@ -31,6 +31,7 @@ app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_
 # ഡാറ്റാബേസ് സെറ്റപ്പ്
 async def init_db():
     async with aiosqlite.connect("movies.db") as db:
+        # rowid ഓട്ടോമാറ്റിക് ആയി ലഭിക്കും, അതിനാൽ PRIMARY KEY മാത്രം മതി
         await db.execute("CREATE TABLE IF NOT EXISTS movies (file_id TEXT PRIMARY KEY, file_name TEXT, file_size INTEGER)")
         await db.commit()
 
@@ -44,7 +45,6 @@ async def save_file(client, message):
     file = message.document or message.video
     if file:
         f_name = getattr(file, "file_name", "Unknown_Movie")
-        print(f"DEBUG: Saving file - Name: {f_name}, ID: {file.file_id}") # ലോഗിൽ വരുന്നുണ്ടോ എന്ന് നോക്കുക
         async with aiosqlite.connect("movies.db") as db:
             await db.execute("INSERT OR IGNORE INTO movies VALUES (?, ?, ?)", 
                              (file.file_id, f_name, getattr(file, "file_size", 0)))
@@ -55,32 +55,43 @@ async def save_file(client, message):
 async def search_file(client, message):
     query = message.text
     async with aiosqlite.connect("movies.db") as db:
-        cursor = await db.execute("SELECT file_id, file_name, file_size FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
+        # file_id മുഴുവനായി ബട്ടണിൽ ഇടാതെ, rowid ഉപയോഗിക്കുന്നു
+        cursor = await db.execute("SELECT rowid, file_name, file_size FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
         results = await cursor.fetchall()
     
     if not results:
         google_url = f"https://www.google.com/search?q={quote(query)}+movie+official+name"
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Search on Google", url=google_url)]])
-        await message.reply_text("Sorry, I couldn't find that movie.", reply_markup=keyboard)
+        await message.reply_text("Sorry, I couldn't find that movie. Please check the spelling on Google and try again.", reply_markup=keyboard)
         return
 
     buttons = []
     for result in results:
+        # result[0] = rowid, result[1] = file_name
         size_mb = round(result[2] / (1024 * 1024), 2)
         btn_text = f"[{size_mb}MB] {result[1]}"
-        # ഫയൽ ഐഡി നേരിട്ട് ബട്ടണിൽ ഉപയോഗിക്കുന്നു
-        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{result[0][:10]}")])
+        # ബട്ടൺ ഡാറ്റയിൽ 'send_' എന്ന് ചേർക്കുന്നു
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"send_{result[0]}")])
 
     await message.reply_text("Here are the search results:", reply_markup=InlineKeyboardMarkup(buttons))
 
-# ഫയൽ അയക്കുന്ന ഭാഗം
-@app.on_callback_query(filters.regex(r"^get_"))
+# ഫയൽ അയക്കുന്ന ഭാഗം (ഇതാണ് പ്രധാന മാറ്റം)
+@app.on_callback_query(filters.regex(r"^send_"))
 async def send_file(client, callback_query):
-    # ലോഗ് പരിശോധിക്കാൻ
-    await callback_query.answer("Sending...")
-    # ഫയൽ ഐഡി മുഴുവൻ ഡാറ്റാബേസിൽ നിന്ന് എടുക്കണം
-    # (ലളിതമാക്കാൻ ഇവിടെ ഫയൽ ഐഡി ഉപയോഗിച്ച് അയക്കുന്നു)
-    await client.send_cached_media(chat_id=callback_query.message.chat.id, file_id=callback_query.data.split("_")[1])
+    row_id = callback_query.data.split("_")[1]
+    async with aiosqlite.connect("movies.db") as db:
+        cursor = await db.execute("SELECT file_id, file_name FROM movies WHERE rowid = ?", (row_id,))
+        result = await cursor.fetchone()
+    
+    if result:
+        await callback_query.answer("Sending file...")
+        await client.send_cached_media(
+            chat_id=callback_query.message.chat.id, 
+            file_id=result[0], 
+            caption=f"🎥 **{result[1]}**\n\nUploaded via Trenda Bot"
+        )
+    else:
+        await callback_query.answer("File not found!", show_alert=True)
 
 print("Bot started successfully!")
 loop = asyncio.get_event_loop()
