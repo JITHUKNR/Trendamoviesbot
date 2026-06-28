@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson.objectid import ObjectId
 from flask import Flask
 from threading import Thread
+import certifi  # <--- ഡാറ്റാബേസ് സെക്യൂരിറ്റി എറർ മാറ്റാൻ
 
 # --- ഡമ്മി വെബ് സർവർ ---
 web_app = Flask(__name__)
@@ -30,8 +31,8 @@ API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DB_URL = os.environ.get("DATABASE_URL")
 
-# ഡാറ്റാബേസ് കണക്ഷൻ
-db_client = AsyncIOMotorClient(DB_URL)
+# ഡാറ്റാബേസ് കണക്ഷൻ (certifi ഉപയോഗിച്ച് കണക്ട് ചെയ്യുന്നു)
+db_client = AsyncIOMotorClient(DB_URL, tlsCAFile=certifi.where())
 db = db_client["TrendaBot"]
 collection = db["movies"]
 
@@ -47,7 +48,6 @@ async def start_command(client, message):
 async def save_file(client, message):
     file = message.document or message.video
     if file:
-        # ഫയൽ ഇതിനകം ഡാറ്റാബേസിൽ ഉണ്ടോ എന്ന് നോക്കുന്നു
         existing = await collection.find_one({"file_id": file.file_id})
         if not existing:
             file_data = {
@@ -61,9 +61,7 @@ async def save_file(client, message):
 @app.on_message(filters.text & filters.private)
 async def search_file(client, message):
     query = message.text
-    # അക്ഷരങ്ങൾ ചെറുതോ വലുതോ ആയാലും കണ്ടുപിടിക്കാൻ
     regex = re.compile(query, re.IGNORECASE)
-    # പരമാവധി 10 റിസൾട്ടുകൾ എടുക്കുന്നു
     results = await collection.find({"file_name": regex}).to_list(length=10)
     
     if not results:
@@ -72,7 +70,6 @@ async def search_file(client, message):
 
     buttons = []
     for result in results:
-        # ഫയൽ സൈസ് MB-ലേക്ക് മാറ്റുന്നു
         size_mb = round(result['file_size'] / (1024 * 1024), 2)
         btn_text = f"[{size_mb}MB] {result['file_name']}"
         buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{str(result['_id'])}")])
