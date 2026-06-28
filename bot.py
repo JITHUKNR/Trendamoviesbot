@@ -9,9 +9,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson.objectid import ObjectId
 from flask import Flask
 from threading import Thread
-import certifi  # <--- ഡാറ്റാബേസ് സെക്യൂരിറ്റി എറർ മാറ്റാൻ
+import certifi
 
-# --- ഡമ്മി വെബ് സർവർ ---
+# --- Dummy Web Server ---
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -25,13 +25,13 @@ def run_server():
 Thread(target=run_server).start()
 # -----------------------------------------------
 
-# വിവരങ്ങൾ Render-ൽ നിന്നും എടുക്കാൻ
+# Configuration from Render Environment
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DB_URL = os.environ.get("DATABASE_URL")
 
-# ഡാറ്റാബേസ് കണക്ഷൻ (certifi ഉപയോഗിച്ച് കണക്ട് ചെയ്യുന്നു)
+# Database Connection
 db_client = AsyncIOMotorClient(DB_URL, tlsCAFile=certifi.where())
 db = db_client["TrendaBot"]
 collection = db["movies"]
@@ -41,9 +41,9 @@ app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_
 # 1. Start Command
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
-    await message.reply_text("ഹലോ! ഞാൻ Trenda സിനിമാ സെർച്ച് ബോട്ട് ആണ്. നിങ്ങൾക്ക് വേണ്ട സിനിമയുടെ പേര് ടൈപ്പ് ചെയ്യൂ.")
+    await message.reply_text("Hello! I am the Trenda Cinema Search Bot. Please type the name of the movie you want to search.")
 
-# 2. Indexing (ചാനലിൽ വരുന്ന സിനിമകൾ ഡാറ്റാബേസിൽ സേവ് ചെയ്യാൻ)
+# 2. Indexing (Save files from channel to database)
 @app.on_message((filters.document | filters.video) & filters.channel)
 async def save_file(client, message):
     file = message.document or message.video
@@ -57,7 +57,7 @@ async def save_file(client, message):
             }
             await collection.insert_one(file_data)
 
-# 3. Search (സിനിമ തിരയുമ്പോൾ ഫയൽ കാണിക്കാൻ)
+# 3. Search (Search files in database)
 @app.on_message(filters.text & filters.private)
 async def search_file(client, message):
     query = message.text
@@ -65,7 +65,7 @@ async def search_file(client, message):
     results = await collection.find({"file_name": regex}).to_list(length=10)
     
     if not results:
-        await message.reply_text("ക്ഷമിക്കണം, ഈ സിനിമ എൻ്റെ ഡാറ്റാബേസിൽ ഇല്ല.")
+        await message.reply_text("Sorry, this movie is not available in my database.")
         return
 
     buttons = []
@@ -75,9 +75,9 @@ async def search_file(client, message):
         buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{str(result['_id'])}")])
 
     reply_markup = InlineKeyboardMarkup(buttons)
-    await message.reply_text("നിങ്ങൾ തിരഞ്ഞ സിനിമകൾ താഴെ നൽകുന്നു:", reply_markup=reply_markup)
+    await message.reply_text("Here are the search results:", reply_markup=reply_markup)
 
-# 4. Button Click (ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുമ്പോൾ സിനിമ അയക്കാൻ)
+# 4. Button Click (Send file on button click)
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file(client, callback_query):
     file_id_str = callback_query.data.split("_")[1]
@@ -93,5 +93,5 @@ async def send_file(client, callback_query):
     else:
         await callback_query.answer("File not found!", show_alert=True)
 
-print("ബോട്ട് സ്റ്റാർട്ട് ആയിട്ടുണ്ട്...")
+print("Bot has started successfully...")
 app.run()
