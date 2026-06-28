@@ -10,7 +10,7 @@ from bson.objectid import ObjectId
 from flask import Flask
 from threading import Thread
 
-# --- Dummy Web Server ---
+# --- Dummy Web Server (Required for Render) ---
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -30,8 +30,9 @@ API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DB_URL = os.environ.get("DATABASE_URL")
 
-# Database Connection (SSL error fixed here)
-db_client = AsyncIOMotorClient(DB_URL, tls=True, tlsAllowInvalidCertificates=True)
+# Optimized Database Connection
+# tlsAllowInvalidCertificates=True helps bypass certificate issues on Render
+db_client = AsyncIOMotorClient(DB_URL, tlsAllowInvalidCertificates=True)
 db = db_client["TrendaBot"]
 collection = db["movies"]
 
