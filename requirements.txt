@@ -1,6 +1,5 @@
-Pyrogram
 TgCrypto
 Flask
-motor
 certifi
 dnspython
+aiosqlite
