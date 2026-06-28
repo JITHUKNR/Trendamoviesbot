@@ -3,7 +3,7 @@ asyncio.set_event_loop(asyncio.new_event_loop())
 
 import os
 import uuid
-import certifi  # <-- പുതിയതായി ചേർത്തത്
+import certifi
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
@@ -32,45 +32,47 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 MONGO_URI = os.environ.get("MONGO_URI", "") 
 
-# Force Subscribe Settings 
 FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", -1003903891234)) 
 FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/YourChannelLinkHere")
-
-# Auto-Delete Time (5 Minutes = 300 Seconds)
 AUTO_DELETE_TIME = 300 
 
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# MongoDB Setup (ഇവിടെയാണ് പ്രധാന മാറ്റം വരുത്തിയത്)
+# MongoDB Setup (Timeout വെച്ചിട്ടുണ്ട്, അതിനാൽ ബോട്ട് ഫ്രീസ് ആവില്ല)
 if MONGO_URI:
-    # SSL എറർ ഒഴിവാക്കാൻ certifi.where() ചേർത്തു
-    mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where()) 
+    mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
     db = mongo_client["trenda_movies"]
     movies_col = db["movies"]
     users_col = db["users"]
     searches_col = db["searches"]
 else:
-    print("⚠️ WARNING: MONGO_URI is not set! The bot will not save data correctly.")
+    print("⚠️ WARNING: MONGO_URI is not set!", flush=True)
 
-# Add New User
+# Add New User (Error Catching)
 async def add_user(user_id):
-    await users_col.update_one(
-        {"user_id": user_id},
-        {"$setOnInsert": {"user_id": user_id, "is_banned": 0}},
-        upsert=True
-    )
+    try:
+        await users_col.update_one(
+            {"user_id": user_id},
+            {"$setOnInsert": {"user_id": user_id, "is_banned": 0}},
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"MongoDB Error: {e}", flush=True)
+        return False
 
 # Check Access (Ban & FSub)
 async def check_user_access(client, message):
     user_id = message.from_user.id
     
-    # 1. Ban Check
-    user = await users_col.find_one({"user_id": user_id})
-    if user and user.get("is_banned") == 1:
-        await message.reply_text("⛔ **You are banned from using this bot.**")
-        return False
+    try:
+        user = await users_col.find_one({"user_id": user_id})
+        if user and user.get("is_banned") == 1:
+            await message.reply_text("⛔ **You are banned from using this bot.**")
+            return False
+    except Exception:
+        pass
             
-    # 2. Force Subscribe Check
     try:
         await client.get_chat_member(FORCE_SUB_CHANNEL, user_id)
     except UserNotParticipant:
@@ -81,13 +83,18 @@ async def check_user_access(client, message):
         )
         return False
     except Exception:
-        pass # Ignore if bot is not admin in the channel yet
+        pass 
         
     return True
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
-    await add_user(message.from_user.id)
+    db_status = await add_user(message.from_user.id)
+    if not db_status:
+        # ഡാറ്റാബേസ് കണക്ട് ആയില്ലെങ്കിൽ ബോട്ട് ഇത് റിപ്ലൈ തരും
+        await message.reply_text("⚠️ **Database is not connected yet!**\nPlease wait a minute and try again.")
+        return
+        
     if not await check_user_access(client, message):
         return
     await message.reply_text("👋 **Hello! I am the Trenda Cinema Bot.**\n\nPlease type the name of the movie you want to search.")
@@ -98,16 +105,12 @@ async def start_command(client, message):
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
     if message.from_user.id != ADMIN_ID: return
-
     buttons = [
         [InlineKeyboardButton("📊 Bot Stats", callback_data="admin_stats")],
         [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🗑️ Clear Movies DB", callback_data="admin_cleardb")]
     ]
-    await message.reply_text(
-        "👨‍💻 **Welcome to the Admin Panel!**\nSelect an option below:", 
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    await message.reply_text("👨‍💻 **Welcome to the Admin Panel!**\nSelect an option below:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^admin_"))
 async def admin_callbacks(client, callback_query):
@@ -124,15 +127,11 @@ async def admin_callbacks(client, callback_query):
         await callback_query.message.edit_text(text)
 
     elif action == "cleardb":
-        # Clear DB Confirmation Step
         buttons = [
             [InlineKeyboardButton("✅ Yes, Clear All", callback_data="admin_confirmclear")],
             [InlineKeyboardButton("❌ Cancel", callback_data="admin_cancelclear")]
         ]
-        await callback_query.message.edit_text(
-            "⚠️ **Are you sure you want to delete ALL movies?**\nThis action cannot be undone.",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        await callback_query.message.edit_text("⚠️ **Are you sure you want to delete ALL movies?**\nThis action cannot be undone.", reply_markup=InlineKeyboardMarkup(buttons))
         
     elif action == "confirmclear":
         await movies_col.delete_many({})
@@ -153,7 +152,6 @@ async def broadcast_message(client, message):
         return
 
     broadcast_text = message.text.split(" ", 1)[1]
-    
     success, failed = 0, 0
     reply = await message.reply_text("📢 Broadcast starting...")
     
@@ -205,43 +203,45 @@ async def trending_searches(client, message):
 
 # ==========================================================
 
-# Save File Logic
 @app.on_message((filters.document | filters.video) & filters.channel)
 async def save_file(client, message):
     file = message.document or message.video
     if file:
         f_name = getattr(file, "file_name", "Unknown_Movie")
         short_id = uuid.uuid4().hex[:8] 
-        
-        await movies_col.update_one(
-            {"file_id": file.file_id},
-            {"$setOnInsert": {
-                "file_name": f_name, 
-                "file_size": getattr(file, "file_size", 0),
-                "short_id": short_id
-            }},
-            upsert=True
-        )
+        try:
+            await movies_col.update_one(
+                {"file_id": file.file_id},
+                {"$setOnInsert": {
+                    "file_name": f_name, 
+                    "file_size": getattr(file, "file_size", 0),
+                    "short_id": short_id
+                }},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"Error saving file: {e}", flush=True)
 
-# Search File Logic
 @app.on_message(filters.text & filters.private)
 async def search_file(client, message):
     if message.text.startswith("/"): return
     
-    await add_user(message.from_user.id)
+    db_status = await add_user(message.from_user.id)
+    if not db_status:
+        await message.reply_text("⚠️ **Database is not connected yet!**\nPlease wait a minute and try again.")
+        return
+
     if not await check_user_access(client, message):
         return
         
     query = message.text
     
-    # Update trending searches
     await searches_col.update_one(
         {"_id": query.lower()},
         {"$inc": {"count": 1}},
         upsert=True
     )
     
-    # Search in MongoDB
     cursor = movies_col.find({"file_name": {"$regex": query, "$options": "i"}}).limit(50)
     results = await cursor.to_list(length=50)
     
@@ -262,7 +262,6 @@ async def search_file(client, message):
 
     await message.reply_text("Here are the search results:", reply_markup=InlineKeyboardMarkup(buttons))
 
-# Movie Request Button Logic
 @app.on_callback_query(filters.regex(r"^req_"))
 async def request_movie(client, callback_query):
     query = callback_query.data.split("_", 1)[1]
@@ -278,7 +277,6 @@ async def request_movie(client, callback_query):
     else:
          await callback_query.answer("Admin ID is not configured.", show_alert=True)
 
-# Auto-Delete Task Function
 async def delete_after_delay(message, delay):
     await asyncio.sleep(delay)
     try:
@@ -286,7 +284,6 @@ async def delete_after_delay(message, delay):
     except Exception:
         pass
 
-# Send File Logic
 @app.on_callback_query(filters.regex(r"^send_"))
 async def send_file(client, callback_query):
     if not await check_user_access(client, callback_query):
@@ -306,5 +303,5 @@ async def send_file(client, callback_query):
     else:
         await callback_query.answer("File not found!", show_alert=True)
 
-print("Bot started successfully with Pro Features & MongoDB!")
+print("Bot started successfully with Pro Features & MongoDB!", flush=True)
 app.run()
