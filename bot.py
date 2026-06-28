@@ -3,6 +3,7 @@ asyncio.set_event_loop(asyncio.new_event_loop())
 
 import os
 import uuid
+import certifi  # <-- പുതിയതായി ചേർത്തത്
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
@@ -29,9 +30,9 @@ API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
-MONGO_URI = os.environ.get("MONGO_URI", "") # പുതിയ MongoDB ലിങ്ക്
+MONGO_URI = os.environ.get("MONGO_URI", "") 
 
-# Force Subscribe Settings (New Channel ID Added)
+# Force Subscribe Settings 
 FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", -1003903891234)) 
 FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/YourChannelLinkHere")
 
@@ -40,9 +41,10 @@ AUTO_DELETE_TIME = 300
 
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# MongoDB Setup
+# MongoDB Setup (ഇവിടെയാണ് പ്രധാന മാറ്റം വരുത്തിയത്)
 if MONGO_URI:
-    mongo_client = AsyncIOMotorClient(MONGO_URI)
+    # SSL എറർ ഒഴിവാക്കാൻ certifi.where() ചേർത്തു
+    mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where()) 
     db = mongo_client["trenda_movies"]
     movies_col = db["movies"]
     users_col = db["users"]
@@ -209,7 +211,6 @@ async def save_file(client, message):
     file = message.document or message.video
     if file:
         f_name = getattr(file, "file_name", "Unknown_Movie")
-        # Generate a short ID for the button callback
         short_id = uuid.uuid4().hex[:8] 
         
         await movies_col.update_one(
@@ -240,7 +241,7 @@ async def search_file(client, message):
         upsert=True
     )
     
-    # Search in MongoDB (Case insensitive search)
+    # Search in MongoDB
     cursor = movies_col.find({"file_name": {"$regex": query, "$options": "i"}}).limit(50)
     results = await cursor.to_list(length=50)
     
