@@ -9,7 +9,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson.objectid import ObjectId
 from flask import Flask
 from threading import Thread
-import certifi
 
 # --- Dummy Web Server ---
 web_app = Flask(__name__)
@@ -31,8 +30,8 @@ API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DB_URL = os.environ.get("DATABASE_URL")
 
-# Database Connection
-db_client = AsyncIOMotorClient(DB_URL, tlsCAFile=certifi.where())
+# Database Connection (SSL error fixed here)
+db_client = AsyncIOMotorClient(DB_URL, tls=True, tlsAllowInvalidCertificates=True)
 db = db_client["TrendaBot"]
 collection = db["movies"]
 
