@@ -3,4 +3,4 @@ TgCrypto
 Flask
 certifi
 dnspython
-aiosqlite
+motor
