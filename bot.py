@@ -42,46 +42,48 @@ async def start_command(client, message):
 async def save_file(client, message):
     file = message.document or message.video
     if file:
+        # പേര് കിട്ടിയില്ലെങ്കിൽ ഫയൽ ഐഡി ഉപയോഗിക്കാം
+        f_name = getattr(file, "file_name", "Unknown_Movie")
         async with aiosqlite.connect("movies.db") as db:
             cursor = await db.execute("SELECT * FROM movies WHERE file_id = ?", (file.file_id,))
             if not await cursor.fetchone():
-                await db.execute("INSERT INTO movies VALUES (?, ?, ?)", (file.file_id, getattr(file, "file_name", "Unknown"), getattr(file, "file_size", 0)))
+                await db.execute("INSERT INTO movies VALUES (?, ?, ?)", (file.file_id, f_name, getattr(file, "file_size", 0)))
                 await db.commit()
 
 @app.on_message(filters.text & filters.private)
 async def search_file(client, message):
     query = message.text
     async with aiosqlite.connect("movies.db") as db:
-        cursor = await db.execute("SELECT file_id, file_name, file_size FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
+        cursor = await db.execute("SELECT rowid, file_name, file_size FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
         results = await cursor.fetchall()
     
     if not results:
-        # സിനിമ കിട്ടിയില്ലെങ്കിൽ ഗൂഗിൾ ലിങ്ക് നൽകുന്നു
-        google_url = f"https://www.google.com/search?q={quote(query)}+movie+official+name"
+        google_url = f"https://www.google.com/search?q={quote(query)}+movie"
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Search on Google", url=google_url)]])
-        await message.reply_text(
-            "Sorry, I couldn't find that movie. Please check the spelling on Google and try again.",
-            reply_markup=keyboard
-        )
+        await message.reply_text("Sorry, I couldn't find that movie.", reply_markup=keyboard)
         return
 
     buttons = []
     for result in results:
+        # result[0] = rowid (ID), result[1] = file_name
         size_mb = round(result[2] / (1024 * 1024), 2)
         btn_text = f"[{size_mb}MB] {result[1]}"
-        # ബട്ടൺ ഡാറ്റ വലുതാകാതിരിക്കാൻ ചെറിയ കീ ഉപയോഗിക്കുന്നു
-        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{result[0][:10]}")]) # file_id-യുടെ ചെറിയ ഭാഗം
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{result[0]}")])
 
     await message.reply_text("Here are the search results:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file(client, callback_query):
-    # ഇവിടെ ഫയൽ അയക്കുമ്പോൾ ഐഡി കൃത്യമായിരിക്കണം
-    # തൽക്കാലം ലോഗ് കാണാൻ മാത്രം
-    await callback_query.answer("Sending file...")
-    # കുറിപ്പ്: get_ എന്നതിൽ ഫയൽ ഐഡി മുഴുവൻ കിട്ടാൻ callback_data മാറ്റണം
+    row_id = callback_query.data.split("_")[1]
+    async with aiosqlite.connect("movies.db") as db:
+        cursor = await db.execute("SELECT file_id, file_name FROM movies WHERE rowid = ?", (row_id,))
+        result = await cursor.fetchone()
+    
+    if result:
+        await client.send_cached_media(chat_id=callback_query.message.chat.id, file_id=result[0], caption=f"🎥 {result[1]}")
+    else:
+        await callback_query.answer("File not found!")
 
-print("Bot started!")
 loop = asyncio.get_event_loop()
 loop.run_until_complete(init_db())
 app.run()
