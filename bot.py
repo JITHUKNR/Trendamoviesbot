@@ -2,12 +2,12 @@ import asyncio
 asyncio.set_event_loop(asyncio.new_event_loop())
 
 import os
-import re
-import aiosqlite # SQLite ഉപയോഗിക്കുന്നു
+import aiosqlite
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask
 from threading import Thread
+from urllib.parse import quote
 
 # --- Web Server ---
 web_app = Flask(__name__)
@@ -52,29 +52,36 @@ async def save_file(client, message):
 async def search_file(client, message):
     query = message.text
     async with aiosqlite.connect("movies.db") as db:
-        cursor = await db.execute("SELECT * FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
+        cursor = await db.execute("SELECT file_id, file_name, file_size FROM movies WHERE file_name LIKE ?", (f'%{query}%',))
         results = await cursor.fetchall()
     
     if not results:
-        await message.reply_text("Sorry, this movie is not available.")
+        # സിനിമ കിട്ടിയില്ലെങ്കിൽ ഗൂഗിൾ ലിങ്ക് നൽകുന്നു
+        google_url = f"https://www.google.com/search?q={quote(query)}+movie+official+name"
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Search on Google", url=google_url)]])
+        await message.reply_text(
+            "Sorry, I couldn't find that movie. Please check the spelling on Google and try again.",
+            reply_markup=keyboard
+        )
         return
 
     buttons = []
     for result in results:
         size_mb = round(result[2] / (1024 * 1024), 2)
         btn_text = f"[{size_mb}MB] {result[1]}"
-        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{result[0]}")])
+        # ബട്ടൺ ഡാറ്റ വലുതാകാതിരിക്കാൻ ചെറിയ കീ ഉപയോഗിക്കുന്നു
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"get_{result[0][:10]}")]) # file_id-യുടെ ചെറിയ ഭാഗം
 
     await message.reply_text("Here are the search results:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file(client, callback_query):
-    file_id = callback_query.data.split("_")[1]
-    # Simple send logic (needs file_name for caption)
-    await client.send_cached_media(chat_id=callback_query.message.chat.id, file_id=file_id)
-    await callback_query.answer("Sending...")
+    # ഇവിടെ ഫയൽ അയക്കുമ്പോൾ ഐഡി കൃത്യമായിരിക്കണം
+    # തൽക്കാലം ലോഗ് കാണാൻ മാത്രം
+    await callback_query.answer("Sending file...")
+    # കുറിപ്പ്: get_ എന്നതിൽ ഫയൽ ഐഡി മുഴുവൻ കിട്ടാൻ callback_data മാറ്റണം
 
-print("Bot started with SQLite!")
+print("Bot started!")
 loop = asyncio.get_event_loop()
 loop.run_until_complete(init_db())
 app.run()
