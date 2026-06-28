@@ -2,3 +2,4 @@ Pyrogram
 TgCrypto
 Flask
 motor
+certifi
