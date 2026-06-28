@@ -3,3 +3,4 @@ TgCrypto
 Flask
 motor
 certifi
+dnspython
