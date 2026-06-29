@@ -5,7 +5,7 @@ import os
 import uuid
 import certifi
 import re
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
 from flask import Flask
@@ -88,7 +88,7 @@ async def add_user(user_id):
     except Exception:
         return False
 
-# Check Access (Ban & FSub Strict Rule)
+# Strict Check Access (Ban & FSub)
 async def check_user_access(client, message):
     user_id = message.from_user.id
     
@@ -103,15 +103,20 @@ async def check_user_access(client, message):
     if fsub_channel != -100:
         try:
             member = await client.get_chat_member(fsub_channel, user_id)
-            if member.status in ["kicked", "left"]: # Strict Check
+            # Strict verification: If user left or was banned from channel, block them
+            if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
                 raise UserNotParticipant
         except UserNotParticipant:
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            error_text = "⚠️ **Please join our main channel to use this bot!**\n\nClick the button below to join, then come back and search again."
+            error_msg = "⚠️ **Please join our main channel to use this bot and download movies!**\n\nClick the button below to join, then come back and search again."
             try:
-                await message.reply_photo(photo=START_PIC, caption=error_text, reply_markup=InlineKeyboardMarkup(btn))
+                await message.reply_photo(
+                    photo=START_PIC,
+                    caption=error_msg, 
+                    reply_markup=InlineKeyboardMarkup(btn)
+                )
             except Exception:
-                await message.reply_text(error_text, reply_markup=InlineKeyboardMarkup(btn))
+                await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
             return False
         except Exception: pass 
     return True
@@ -146,10 +151,12 @@ async def admin_panel(client, message):
         [InlineKeyboardButton("⚙️ FSub Control", callback_data="admin_fsub"),
          InlineKeyboardButton("⏱️ Auto-Delete", callback_data="admin_timer")],
         [InlineKeyboardButton("👥 Manage Admins", callback_data="admin_mng"),
-         InlineKeyboardButton("🗑️ Clear DB", callback_data="admin_clear")],
-        [InlineKeyboardButton("❌ Del Movie", callback_data="admin_delmovie_info")] # New Button
+         InlineKeyboardButton("🚫 Ban / Unban", callback_data="admin_baninfo")],
+        [InlineKeyboardButton("📢 Broadcast Info", callback_data="admin_bcinfo"),
+         InlineKeyboardButton("❌ Delete Movie", callback_data="admin_delinfo")],
+        [InlineKeyboardButton("🗑️ Clear Database", callback_data="admin_clear")]
     ]
-    await message.reply_text("👨‍💻 **Welcome to Premium Admin Control Panel!**\nSelect an option:", reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text("👨‍💻 **Welcome to Premium Admin Control Panel!**\nSelect an option to view instructions or stats:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^admin_"))
 async def admin_callbacks(client, callback_query):
@@ -182,18 +189,29 @@ async def admin_callbacks(client, callback_query):
         text = f"👥 **Admin Management:**\n\n👑 Super Admin: `{ADMIN_ID}`\n\nAdd/Remove Admins using:\n`/addadmin USER_ID`\n`/removeadmin USER_ID`"
         await callback_query.message.edit_text(text)
         
-    elif action == "delmovie_info":
-        text = f"❌ **Delete a Movie**\n\nTo completely delete a movie (Files + Poster) from the bot, send this command:\n\n`/delmovie Movie Name`\n*(e.g., /delmovie Derby)*"
+    elif action == "baninfo":
+        text = "🚫 **Ban & Unban Users:**\n\nTo ban a user from using the bot:\n`/ban User_ID`\n\nTo unban them:\n`/unban User_ID`"
+        await callback_query.message.edit_text(text)
+        
+    elif action == "bcinfo":
+        text = "📢 **How to Broadcast:**\n\nReply to ANY message (Photo, Video, Text with buttons) with the command:\n`/broadcast`\n\nThe bot will safely deliver it to all users!"
+        await callback_query.message.edit_text(text)
+        
+    elif action == "delinfo":
+        text = "❌ **Delete a Movie:**\n\nTo delete a movie and its poster completely from the database, send:\n`/delmovie Movie Name`\n*(e.g., /delmovie Derby)*"
         await callback_query.message.edit_text(text)
 
     elif action == "clear":
         buttons = [[InlineKeyboardButton("✅ Confirm Clear All", callback_data="admin_confclear")], [InlineKeyboardButton("❌ Cancel", callback_data="admin_panel_home")]]
-        await callback_query.message.edit_text("⚠️ **Are you sure to clear movies and posters?**", reply_markup=InlineKeyboardMarkup(buttons))
+        await callback_query.message.edit_text("⚠️ **Are you sure you want to clear all movies and posters?**", reply_markup=InlineKeyboardMarkup(buttons))
 
     elif action == "confclear":
         await movies_col.delete_many({})
         await posters_col.delete_many({})
         await callback_query.message.edit_text("✅ Databases cleared successfully!")
+        
+    elif action == "panel_home":
+        await callback_query.message.delete()
 
 # Multi-Admin & Settings Commands
 @app.on_message(filters.command("setchannel") & filters.private)
@@ -259,7 +277,7 @@ async def unban_user(client, message):
         await message.reply_text(f"✅ User `{target_id}` UNBANNED.")
     except Exception: await message.reply_text("Usage: `/unban UserID`")
 
-# --- Delete Specific Movie (Files + Poster) ---
+# --- Single Movie Delete Command ---
 @app.on_message(filters.command("delmovie") & filters.private)
 async def delete_movie(client, message):
     if not await is_admin(message.from_user.id): return
@@ -273,7 +291,7 @@ async def delete_movie(client, message):
     del_files = await movies_col.delete_many({"file_name": {"$regex": search_pattern, "$options": "i"}})
     del_poster = await posters_col.delete_one({"title": query})
     
-    text = f"✅ **Deleted successfully!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files.deleted_count}`\n🖼️ Poster deleted: `{'Yes' if del_poster.deleted_count > 0 else 'No'}`"
+    text = f"✅ **Successfully Deleted!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files.deleted_count}`\n🖼️ Poster deleted: `{'Yes' if del_poster.deleted_count > 0 else 'No'}`"
     await message.reply_text(text)
 
 
@@ -292,7 +310,6 @@ async def advanced_broadcast(client, message):
     success, failed = 0, 0
     async for user in users_col.find({}):
         try:
-            # copy_message preserves photos, videos, captions, and inline buttons perfectly!
             await reply_msg.copy(chat_id=user["user_id"])
             success += 1
             await asyncio.sleep(0.05) 
@@ -338,7 +355,7 @@ async def save_file(client, message):
 async def search_file(client, message):
     if message.text.startswith("/"): return
     if not await add_user(message.from_user.id): return
-    if not await check_user_access(client, message): return # Strict FSub check is here
+    if not await check_user_access(client, message): return
         
     query = message.text.strip()
     await searches_col.update_one({"_id": query.lower()}, {"$inc": {"count": 1}}, upsert=True)
@@ -356,8 +373,11 @@ async def search_file(client, message):
     for result in results:
         size_mb = round(result["file_size"] / (1024 * 1024), 2)
         full_name = result['file_name']
-        # Trim Name to keep buttons small (Max 25 characters)
-        short_name = full_name[:25] + "..." if len(full_name) > 25 else full_name
+        
+        # --- Trim the filename to make buttons smaller ---
+        max_length = 30
+        short_name = full_name[:max_length] + "..." if len(full_name) > max_length else full_name
+        
         btn_text = f"[{size_mb}MB] {short_name}"
         buttons.append([InlineKeyboardButton(btn_text, callback_data=f"send_{result['short_id']}")])
 
