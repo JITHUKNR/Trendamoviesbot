@@ -123,8 +123,7 @@ async def check_user_access(client, message):
             except Exception:
                 await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
             return False
-                except Exception:
-            # എറർ വന്നാൽ സിനിമ കിട്ടില്ല, ജോയിൻ ചെയ്യാൻ പറയണം
+                        except Exception:
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
             await message.reply_text("⚠️ **Error verifying subscription! Please join the channel first.**", reply_markup=InlineKeyboardMarkup(btn))
             return False
