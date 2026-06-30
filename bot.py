@@ -207,10 +207,13 @@ async def admin_menus(client, callback_query):
         ]
         await callback_query.message.edit_text("👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below:", reply_markup=InlineKeyboardMarkup(buttons))
 
-    elif data == "menu_bot":
-        text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]` (Use {name}, {id}, {username})\n2. `/setstartpic [Link]` or reply to photo\n3. `/usedp` (To show user's profile pic)\n4. `/setwebsite [URL]` (For Watch Online Button)"
-        buttons = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
-        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), disable_web_page_preview=True)
+        elif data == "menu_bot":
+        text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]`\n2. `/setstartpic [Link]`\n3. `/setwebsite [URL]`\n4. `/setthumb` (To Set File Thumbnail)"
+        buttons = [
+            [InlineKeyboardButton("🖼️ Set File Thumbnail", callback_data="admin_setthumb")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     elif data == "menu_users":
         buttons = [
@@ -330,6 +333,24 @@ async def set_website_url(client, message):
     else:
         await settings_col.update_one({"_id": "web_config"}, {"$set": {"url": url}}, upsert=True)
         await message.reply_text(f"✅ Website configured! Watch Online button will redirect to:\n`{url}/?s=MOVIE_NAME`")
+        # ================= SET FILE THUMBNAIL LOGIC =================
+
+@app.on_message(filters.command("setthumb") & filters.private)
+async def set_thumb_cmd(client, message):
+    if not await is_admin(message.from_user.id): return
+    
+    # ഫോട്ടോ റിപ്ലൈ ആയിട്ടോ അല്ലെങ്കിൽ ലിങ്ക് ആയിട്ടോ നൽകാം
+    if message.reply_to_message and message.reply_to_message.photo:
+        thumb_file_id = message.reply_to_message.photo.file_id
+    elif len(message.command) > 1:
+        # യുസർ ലിങ്ക് ആണ് അയക്കുന്നതെങ്കിൽ
+        thumb_file_id = message.command[1]
+    else:
+        return await message.reply_text("Usage: Reply to a photo with /setthumb or provide a photo URL.")
+        
+    # ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+    await settings_col.update_one({"_id": "thumb_config"}, {"$set": {"file_id": thumb_file_id}}, upsert=True)
+    await message.reply_text("✅ File Thumbnail updated successfully!")
 
 @app.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_id(client, message):
@@ -567,11 +588,16 @@ async def send_file(client, callback_query):
             btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
             reply_markup = InlineKeyboardMarkup(btn)
         
+                # --- NEW: CUSTOM THUMBNAIL LOGIC ---
+        thumb_config = await settings_col.find_one({"_id": "thumb_config"})
+        thumb_file_id = thumb_config.get("file_id") if thumb_config else None
+        
         sent_msg = await client.send_cached_media(
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
             caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            thumb=thumb_file_id
         )
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
