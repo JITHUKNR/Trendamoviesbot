@@ -595,9 +595,23 @@ async def send_file(client, callback_query):
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
             caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
-            reply_markup=reply_markup,
-            thumb=thumb_file_id
+            reply_markup=reply_markup
         )
+        
+        if thumb_file_id:
+            try:
+                await client.edit_message_media(
+                    chat_id=sent_msg.chat.id,
+                    message_id=sent_msg.id,
+                    media=types.InputMediaVideo(
+                        media=result["file_id"],
+                        thumb=thumb_file_id,
+                        caption=sent_msg.caption
+                    )
+                )
+            except Exception as e:
+                print(f"Thumb Error: {e}")
+        
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
         await callback_query.answer("File not found!", show_alert=True)
