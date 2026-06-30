@@ -532,29 +532,33 @@ async def search_file(client, message):
     results = await cursor.to_list(length=50)
     
     if not results:
-        btn = [[InlineKeyboardButton("📩 Request Movie to Admin", callback_data=f"req_{query[:30]}")]]
-        await message.reply_text("🥲 **Sorry, this movie is not available.**", reply_markup=InlineKeyboardMarkup(btn))
+        # ഗൂഗിൾ സെർച്ച് ലിങ്ക് ഉണ്ടാക്കുന്നു
+        search_query = quote(query)
+        google_url = f"https://www.google.com/search?q={search_query}+movie+spelling"
+        
+        btn = [
+            [InlineKeyboardButton("📩 Request Movie to Admin", callback_data=f"req_{query[:30]}")],
+            [InlineKeyboardButton("🔍 Check Correct Spelling", url=google_url)]
+        ]
+        await message.reply_text("🥲 Sorry, this movie is not available. Please check the spelling on Google.", reply_markup=InlineKeyboardMarkup(btn))
         return
 
     buttons = []
     for result in results:
         size_mb = round(result["file_size"] / (1024 * 1024), 2)
         full_name = result['file_name']
-        max_length = 30
-        short_name = full_name[:max_length] + "..." if len(full_name) > max_length else full_name
-        
-        btn_text = f"[{size_mb}MB] {short_name}"
-        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"send_{result['short_id']}")])
+        short_name = full_name[:30] + "..." if len(full_name) > 30 else full_name
+        buttons.append([InlineKeyboardButton(f"[{size_mb}MB] {short_name}", callback_data=f"send_{result['short_id']}")])
 
     poster = await posters_col.find_one({"title": query.lower()})
     if poster:
-        final_caption = poster["caption"] + "\n\n👇 **Choose Quality to Download:**"
         try:
-            await message.reply_photo(photo=poster["file_id"], caption=final_caption, reply_markup=InlineKeyboardMarkup(buttons))
-        except Exception:
-            await message.reply_text(final_caption, reply_markup=InlineKeyboardMarkup(buttons))
+            await message.reply_photo(photo=poster["file_id"], caption=poster["caption"] + "\n\n👇 Choose Quality to Download:", reply_markup=InlineKeyboardMarkup(buttons))
+        except:
+            await message.reply_text("🍿 Here are your search results:", reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
+        await message.reply_text("🍿 Here are your search results:", reply_markup=InlineKeyboardMarkup(buttons))
+
 
 
 # ================= SEND FILE, AUTO DELETE & WATCH ONLINE =================
