@@ -207,7 +207,7 @@ async def admin_menus(client, callback_query):
         ]
         await callback_query.message.edit_text("👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below:", reply_markup=InlineKeyboardMarkup(buttons))
 
-        elif data == "menu_bot":
+            elif data == "menu_bot":
         text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]`\n2. `/setstartpic [Link]`\n3. `/setwebsite [URL]`\n4. `/setthumb` (To Set File Thumbnail)"
         buttons = [
             [InlineKeyboardButton("🖼️ Set File Thumbnail", callback_data="admin_setthumb")],
