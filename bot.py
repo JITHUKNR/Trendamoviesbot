@@ -582,11 +582,11 @@ async def send_file(client, callback_query):
         reply_markup = None
         base_url = await get_website_link()
         if base_url:
-            # വെബ്സൈറ്റ് ലിങ്കിനൊപ്പം സിനിമയുടെ പേര് ചേർക്കുന്നു
             search_query = quote(result['file_name'])
             watch_link = f"{base_url.rstrip('/')}/?s={search_query}"
             btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
             reply_markup = InlineKeyboardMarkup(btn)
+        
         # --- NEW: CUSTOM THUMBNAIL LOGIC ---
         thumb_config = await settings_col.find_one({"_id": "thumb_config"})
         thumb_file_id = thumb_config.get("file_id") if thumb_config else None
