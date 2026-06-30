@@ -207,13 +207,13 @@ async def admin_menus(client, callback_query):
         ]
         await callback_query.message.edit_text("👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below:", reply_markup=InlineKeyboardMarkup(buttons))
 
-elif data == "menu_bot":
-    text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]`\n2. `/setstartpic [Link]`\n3. `/setwebsite [URL]`\n4. `/setthumb` (To Set File Thumbnail)"
-    buttons = [
-        [InlineKeyboardButton("🖼️ Set File Thumbnail", callback_data="admin_setthumb")],
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
-    ]
-    await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+    elif data == "menu_bot":
+        text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]`\n2. `/setstartpic [Link]`\n3. `/setwebsite [URL]`\n4. `/setthumb` (To Set File Thumbnail)"
+        buttons = [
+            [InlineKeyboardButton("🖼️ Set File Thumbnail", callback_data="admin_setthumb")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     elif data == "menu_users":
         buttons = [
@@ -587,8 +587,7 @@ async def send_file(client, callback_query):
             watch_link = f"{base_url.rstrip('/')}/?s={search_query}"
             btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
             reply_markup = InlineKeyboardMarkup(btn)
-        
-                # --- NEW: CUSTOM THUMBNAIL LOGIC ---
+        # --- NEW: CUSTOM THUMBNAIL LOGIC ---
         thumb_config = await settings_col.find_one({"_id": "thumb_config"})
         thumb_file_id = thumb_config.get("file_id") if thumb_config else None
         
