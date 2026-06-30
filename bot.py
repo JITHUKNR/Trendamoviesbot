@@ -591,13 +591,30 @@ async def send_file(client, callback_query):
         thumb_config = await settings_col.find_one({"_id": "thumb_config"})
         thumb_file_id = thumb_config.get("file_id") if thumb_config else None
         
+                # --- NEW: CUSTOM THUMBNAIL LOGIC ---
+        thumb_config = await settings_col.find_one({"_id": "thumb_config"})
+        thumb_file_id = thumb_config.get("file_id") if thumb_config else None
+        
         sent_msg = await client.send_cached_media(
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
             caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
-            reply_markup=reply_markup,
-            thumb=thumb_file_id
+            reply_markup=reply_markup
         )
+        
+        # തംബ്നൈൽ ഉണ്ടെങ്കിൽ മാത്രം അത് അപ്ഡേറ്റ് ചെയ്യുന്നു (ഇതാണ് ശരിയായ വഴി)
+        if thumb_file_id:
+            try:
+                await client.edit_message_media(
+                    chat_id=sent_msg.chat.id,
+                    message_id=sent_msg.id,
+                    media=types.InputMediaDocument(
+                        media=result["file_id"],
+                        thumb=thumb_file_id,
+                        caption=sent_msg.caption
+                    )
+                )
+            except Exception: pass
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
         await callback_query.answer("File not found!", show_alert=True)
