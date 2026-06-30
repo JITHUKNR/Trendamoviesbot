@@ -127,16 +127,39 @@ async def start_command(client, message):
     if not await add_user(message.from_user.id):
         await message.reply_text("⚠️ **Database is not connected yet!**")
         return
-    if not await check_user_access(client, message): return
         
-    _, fsub_link = await get_fsub_config()
+    if not await check_user_access(client, message): return
+    
+    _fsub_link = await get_fsub_config()
     buttons = [
         [InlineKeyboardButton("🔍 Search Movies", switch_inline_query_current_chat="")],
-        [InlineKeyboardButton("📢 Updates Channel", url=fsub_link)]
+        [InlineKeyboardButton("📢 Updates Channel", url=_fsub_link)]
     ]
-    welcome_text = f"👋 **Hello {message.from_user.first_name}, Welcome to Trenda Cinema Bot!**\n\nType the name of the movie you want to download."
+    
+    # യൂസറുടെ ഡീറ്റെയിൽസ് എടുക്കുന്നു
+    user = message.from_user
+    u_name = user.first_name
+    u_id = user.id
+    u_username = f"@{user.username}" if user.username else "None"
+    
+    # യൂസർക്ക് ഡിപി ഉണ്ടെങ്കിൽ അത് എടുക്കും, ഇല്ലെങ്കിൽ ഡീഫോൾട്ട് പിക്ചർ ഉപയോഗിക്കും
+    photo = START_PIC
+    if user.photo:
+        photo = user.photo.big_file_id
+        
+    # ഡാറ്റാബേസിൽ അഡ്മിൻ മെസ്സേജ് മാറ്റിയിട്ടുണ്ടോ എന്ന് നോക്കുന്നു (ഉദാഹരണത്തിന് ഒരിടത്ത് സേവ് ചെയ്തത്)
+    # തൽക്കാലം ഒരു പ്രീമിയം ഡീഫോൾട്ട് ഇംഗ്ലീഷ് മെസ്സേജ് താഴെ നൽകുന്നു:
+    welcome_text = (
+        "✨ **Welcome to Trenda Cinema Bot** ✨\n\n"
+        "👤 **YOUR PROFILE DETAILS:**\n"
+        f"┣ 📝 **Name:** {u_name}\n"
+        f"┣ 🆔 **User ID:** `{u_id}`\n"
+        f"┗ 🔗 **Username:** {u_username}\n\n"
+        "🍿 *Just type the name of the movie you want to download!*"
+    )
+    
     try:
-        await message.reply_photo(photo=START_PIC, caption=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
+        await message.reply_photo(photo=photo, caption=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception:
         await message.reply_text(text=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -300,8 +323,18 @@ async def delete_movie(client, message):
 @app.on_message(filters.command("broadcast") & filters.private)
 async def advanced_broadcast(client, message):
     if not await is_admin(message.from_user.id): return
-    if not message.reply_to_message:
-        await message.reply_text("⚠️ **How to use:**\nReply to any message with `/broadcast` to send it.")
+        if not message.reply_to_message:
+        await message.reply_text(
+            "⚠️ **How to use /broadcast:**\n\n"
+            "You must reply to a message to send a broadcast.\n\n"
+            "🔘 **Adding Inline Buttons:**\n"
+            "To add a button, include it at the bottom of your message in this format: `[Button Name | URL]`\n\n"
+            "📝 **Example:**\n"
+            "NEW MOVIE 🍿\n\n"
+            "[JOIN CHANNEL | https://t.me/yourchannel]\n\n"
+            "👆 *Send a message like the one above, and then reply to it with /broadcast*",
+            disable_web_page_preview=True
+        )
         return
 
     reply_msg = message.reply_to_message
@@ -312,8 +345,7 @@ async def advanced_broadcast(client, message):
     buttons = []
     
     # [Button Name](http://link.com) എന്ന ഫോർമാറ്റ് കണ്ടുപിടിക്കാൻ
-    matches = re.finditer(r'\[(.+?)\]\((.+?)\)', raw_text)
-    clean_text = raw_text
+    matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
     
     for match in matches:
         btn_text = match.group(1).strip()
