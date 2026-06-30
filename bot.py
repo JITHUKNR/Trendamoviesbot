@@ -37,8 +37,7 @@ MONGO_URI = os.environ.get("MONGO_URI", "")
 DEFAULT_FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", -1003903891234)) 
 DEFAULT_FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/+57MfRxJ_0QdiZjRl")
 DEFAULT_DELETE_TIME = 300 
-
-START_PIC = "https://telegra.ph/file/0c320d759dc23bcbbbb9b.jpg"
+DEFAULT_START_PIC = "https://telegra.ph/file/0c320d759dc23bcbbbb9b.jpg"
 
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -51,47 +50,48 @@ if MONGO_URI:
     searches_col = db["searches"]
     posters_col = db["posters"]  
     settings_col = db["settings"] 
-    admins_col = db["admins"] # Multiple Admins Collection
+    admins_col = db["admins"] 
 else:
     print("⚠️ WARNING: MONGO_URI is not set!", flush=True)
 
-# Helper: Check if User is Admin or Super Admin
+
+# ================= DATABASE HELPERS (ZERO-CODE CONTROL) =================
+
 async def is_admin(user_id):
-    if user_id == ADMIN_ID:
-        return True
+    if user_id == ADMIN_ID: return True
     admin = await admins_col.find_one({"user_id": user_id})
     return bool(admin)
 
-# Helper: Get Dynamic FSub Settings
 async def get_fsub_config():
     config = await settings_col.find_one({"_id": "fsub_config"})
-    if config:
-        return config.get("channel_id"), config.get("link")
+    if config: return config.get("channel_id"), config.get("link")
     return DEFAULT_FORCE_SUB_CHANNEL, DEFAULT_FORCE_SUB_LINK
 
-# Helper: Get Auto-Delete Time
 async def get_delete_time():
     config = await settings_col.find_one({"_id": "timer_config"})
-    if config:
-        return config.get("time", DEFAULT_DELETE_TIME)
+    if config: return config.get("time", DEFAULT_DELETE_TIME)
     return DEFAULT_DELETE_TIME
 
-# Add New User
+async def get_start_config():
+    config = await settings_col.find_one({"_id": "start_config"})
+    default_text = "✨ **Welcome to Trenda Cinema Bot** ✨\n\n👤 **YOUR PROFILE:**\n┣ 📝 **Name:** {name}\n┣ 🆔 **User ID:** `{id}`\n┗ 🔗 **Username:** {username}\n\n🍿 *Just type the name of the movie you want to download!*"
+    if config:
+        return config.get("text", default_text), config.get("pic", DEFAULT_START_PIC)
+    return default_text, DEFAULT_START_PIC
+
+async def get_website_link():
+    config = await settings_col.find_one({"_id": "web_config"})
+    if config: return config.get("url", "")
+    return ""
+
 async def add_user(user_id):
     try:
-        await users_col.update_one(
-            {"user_id": user_id},
-            {"$setOnInsert": {"user_id": user_id, "is_banned": 0}},
-            upsert=True
-        )
+        await users_col.update_one({"user_id": user_id}, {"$setOnInsert": {"user_id": user_id, "is_banned": 0}}, upsert=True)
         return True
-    except Exception:
-        return False
+    except Exception: return False
 
-# Strict Check Access (Ban & FSub)
 async def check_user_access(client, message):
     user_id = message.from_user.id
-    
     try:
         user = await users_col.find_one({"user_id": user_id})
         if user and user.get("is_banned") == 1:
@@ -103,140 +103,222 @@ async def check_user_access(client, message):
     if fsub_channel != -100:
         try:
             member = await client.get_chat_member(fsub_channel, user_id)
-            # Strict verification: If user left or was banned from channel, block them
             if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
                 raise UserNotParticipant
         except UserNotParticipant:
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
             error_msg = "⚠️ **Please join our main channel to use this bot and download movies!**\n\nClick the button below to join, then come back and search again."
             try:
-                await message.reply_photo(
-                    photo=START_PIC,
-                    caption=error_msg, 
-                    reply_markup=InlineKeyboardMarkup(btn)
-                )
+                await message.reply_photo(photo=DEFAULT_START_PIC, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
             except Exception:
                 await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
             return False
         except Exception: pass 
     return True
 
-# Start Command
+
+# ================= START COMMAND =================
+
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     if not await add_user(message.from_user.id):
         await message.reply_text("⚠️ **Database is not connected yet!**")
         return
-        
     if not await check_user_access(client, message): return
     
     _fsub_link = await get_fsub_config()
     buttons = [
         [InlineKeyboardButton("🔍 Search Movies", switch_inline_query_current_chat="")],
-        [InlineKeyboardButton("📢 Updates Channel", url=_fsub_link)]
+        [InlineKeyboardButton("📢 Updates Channel", url=_fsub_link[1])]
     ]
     
-    # യൂസറുടെ ഡീറ്റെയിൽസ് എടുക്കുന്നു
     user = message.from_user
     u_name = user.first_name
     u_id = user.id
     u_username = f"@{user.username}" if user.username else "None"
     
-    # യൂസർക്ക് ഡിപി ഉണ്ടെങ്കിൽ അത് എടുക്കും, ഇല്ലെങ്കിൽ ഡീഫോൾട്ട് പിക്ചർ ഉപയോഗിക്കും
-    photo = START_PIC
-    if user.photo:
+    # ഡാറ്റാബേസിൽ നിന്ന് കസ്റ്റം സെറ്റിംഗ്സ് എടുക്കുന്നു
+    custom_text, custom_pic = await get_start_config()
+    
+    # User DP വേണോ അതോ custom pic വേണോ എന്ന് നോക്കുന്നു
+    photo = custom_pic
+    if custom_pic == "user_dp" and user.photo:
         photo = user.photo.big_file_id
-        
-    # ഡാറ്റാബേസിൽ അഡ്മിൻ മെസ്സേജ് മാറ്റിയിട്ടുണ്ടോ എന്ന് നോക്കുന്നു (ഉദാഹരണത്തിന് ഒരിടത്ത് സേവ് ചെയ്തത്)
-    # തൽക്കാലം ഒരു പ്രീമിയം ഡീഫോൾട്ട് ഇംഗ്ലീഷ് മെസ്സേജ് താഴെ നൽകുന്നു:
-    welcome_text = (
-        "✨ **Welcome to Trenda Cinema Bot** ✨\n\n"
-        "👤 **YOUR PROFILE DETAILS:**\n"
-        f"┣ 📝 **Name:** {u_name}\n"
-        f"┣ 🆔 **User ID:** `{u_id}`\n"
-        f"┗ 🔗 **Username:** {u_username}\n\n"
-        "🍿 *Just type the name of the movie you want to download!*"
-    )
+    elif custom_pic == "user_dp":
+        photo = DEFAULT_START_PIC
+
+    # പ്ലേസ്ഹോൾഡറുകൾ മാറ്റുന്നു ({name}, {id} etc)
+    try:
+        welcome_text = custom_text.format(name=u_name, id=u_id, username=u_username)
+    except Exception:
+        welcome_text = custom_text # ഫോർമാറ്റ് തെറ്റിയാൽ ഉള്ളത് പോലെ കാണിക്കാൻ
     
     try:
         await message.reply_photo(photo=photo, caption=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception:
         await message.reply_text(text=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
 
-# ================= 5+ ADVANCED ADMIN PANEL =================
+
+# ================= ULTRA PROFESSIONAL ADMIN PANEL =================
 
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
     if not await is_admin(message.from_user.id): return
+    
     buttons = [
-        [InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
-         InlineKeyboardButton("🔥 Trending", callback_data="admin_trend")],
-        [InlineKeyboardButton("⚙️ FSub Control", callback_data="admin_fsub"),
-         InlineKeyboardButton("⏱️ Auto-Delete", callback_data="admin_timer")],
-        [InlineKeyboardButton("👥 Manage Admins", callback_data="admin_mng"),
-         InlineKeyboardButton("🚫 Ban / Unban", callback_data="admin_baninfo")],
-        [InlineKeyboardButton("📢 Broadcast Info", callback_data="admin_bcinfo"),
-         InlineKeyboardButton("❌ Delete Movie", callback_data="admin_delinfo")],
-        [InlineKeyboardButton("🗑️ Clear Database", callback_data="admin_clear")]
+        [InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot"),
+         InlineKeyboardButton("👥 Users & Broadcast", callback_data="menu_users")],
+        [InlineKeyboardButton("🎬 Movie & Database", callback_data="menu_movies"),
+         InlineKeyboardButton("🔐 FSub & Security", callback_data="menu_fsub")],
+        [InlineKeyboardButton("👑 Admin Management", callback_data="menu_admins")],
+        [InlineKeyboardButton("❌ Close Panel", callback_data="close_panel")]
     ]
-    await message.reply_text("👨‍💻 **Welcome to Premium Admin Control Panel!**\nSelect an option to view instructions or stats:", reply_markup=InlineKeyboardMarkup(buttons))
+    
+    text = "👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below to control your bot completely:"
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-@app.on_callback_query(filters.regex(r"^admin_"))
-async def admin_callbacks(client, callback_query):
+@app.on_callback_query(filters.regex(r"^menu_") | filters.regex(r"^close_panel") | filters.regex(r"^admin_home$"))
+async def admin_menus(client, callback_query):
+    if not await is_admin(callback_query.from_user.id): return
+    data = callback_query.data
+
+    if data == "close_panel":
+        await callback_query.message.delete()
+        return
+        
+    elif data == "admin_home":
+        buttons = [
+            [InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot"), InlineKeyboardButton("👥 Users & Broadcast", callback_data="menu_users")],
+            [InlineKeyboardButton("🎬 Movie & Database", callback_data="menu_movies"), InlineKeyboardButton("🔐 FSub & Security", callback_data="menu_fsub")],
+            [InlineKeyboardButton("👑 Admin Management", callback_data="menu_admins")],
+            [InlineKeyboardButton("❌ Close", callback_data="close_panel")]
+        ]
+        await callback_query.message.edit_text("👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below:", reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif data == "menu_bot":
+        text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]` (Use {name}, {id}, {username})\n2. `/setstartpic [Link]` or reply to photo\n3. `/usedp` (To show user's profile pic)\n4. `/setwebsite [URL]` (For Watch Online Button)"
+        buttons = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), disable_web_page_preview=True)
+
+    elif data == "menu_users":
+        buttons = [
+            [InlineKeyboardButton("📊 User Stats", callback_data="admin_stats"), InlineKeyboardButton("📢 Broadcast Info", callback_data="admin_bcinfo")],
+            [InlineKeyboardButton("🚫 Ban Info", callback_data="admin_baninfo")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("👥 **USERS & BROADCAST**\n\nManage users and send messages:", reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif data == "menu_movies":
+        buttons = [
+            [InlineKeyboardButton("⏱️ Auto-Delete Timer", callback_data="admin_timer"), InlineKeyboardButton("🔥 Trending", callback_data="admin_trend")],
+            [InlineKeyboardButton("❌ Delete Movie", callback_data="admin_delinfo"), InlineKeyboardButton("🗑️ Clear DB", callback_data="admin_clear")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🎬 **MOVIE & DATABASE**\n\nControl files, timers, and storage:", reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif data == "menu_fsub":
+        buttons = [
+            [InlineKeyboardButton("⚙️ View Current FSub", callback_data="admin_fsub")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🔐 **FSUB & SECURITY**\n\nTo change FSub use these commands:\n`/setchannel -100xxxxxxxx`\n`/setlink https://t.me/...`", reply_markup=InlineKeyboardMarkup(buttons))
+        
+    elif data == "menu_admins":
+        buttons = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
+        await callback_query.message.edit_text("👑 **ADMIN MANAGEMENT**\n\nAdd/Remove admins using:\n`/addadmin USER_ID`\n`/removeadmin USER_ID`", reply_markup=InlineKeyboardMarkup(buttons))
+
+
+# --- Admin Action Callbacks (Stats, Timers etc) ---
+@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|clear|confclear)$"))
+async def admin_actions(client, callback_query):
     if not await is_admin(callback_query.from_user.id): return
     action = callback_query.data.split("_")[1]
+    
+    back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_home")]])
 
     if action == "stats":
         u = await users_col.count_documents({})
         m = await movies_col.count_documents({})
         p = await posters_col.count_documents({})
-        await callback_query.message.edit_text(f"📊 **Bot Stats:**\n\n👥 Users: {u}\n🎬 Movies: {m}\n🖼️ Posters: {p}")
+        await callback_query.message.edit_text(f"📊 **Bot Stats:**\n\n👥 Users: {u}\n🎬 Movies: {m}\n🖼️ Posters: {p}", reply_markup=back_btn)
 
     elif action == "trend":
         cursor = searches_col.find().sort("count", -1).limit(10)
         results = await cursor.to_list(length=10)
         text = "🔥 **Top 10 Trending Searches:**\n\n" if results else "No searches yet!"
-        for idx, res in enumerate(results, 1):
-            text += f"{idx}. {res['_id'].title()} ({res['count']} searches)\n"
-        await callback_query.message.edit_text(text)
+        for idx, res in enumerate(results, 1): text += f"{idx}. {res['_id'].title()} ({res['count']} searches)\n"
+        await callback_query.message.edit_text(text, reply_markup=back_btn)
 
     elif action == "fsub":
         f_id, f_link = await get_fsub_config()
-        await callback_query.message.edit_text(f"⚙️ **FSub Config:**\n\nID: `{f_id}`\nLink: {f_link}\n\nUpdate using:\n`/setchannel ID`\n`/setlink LINK`")
+        await callback_query.message.edit_text(f"⚙️ **Current FSub Config:**\n\nID: `{f_id}`\nLink: {f_link}", reply_markup=back_btn)
 
     elif action == "timer":
         t = await get_delete_time()
-        await callback_query.message.edit_text(f"⏱️ **Current Auto-Delete Timer:** {t} seconds.\n\nUpdate using:\n`/settimer SECONDS`\n*(e.g., /settimer 300)*")
+        await callback_query.message.edit_text(f"⏱️ **Auto-Delete Timer:** {t} seconds.\n\nChange using: `/settimer SECONDS`", reply_markup=back_btn)
 
-    elif action == "mng":
-        text = f"👥 **Admin Management:**\n\n👑 Super Admin: `{ADMIN_ID}`\n\nAdd/Remove Admins using:\n`/addadmin USER_ID`\n`/removeadmin USER_ID`"
-        await callback_query.message.edit_text(text)
-        
     elif action == "baninfo":
-        text = "🚫 **Ban & Unban Users:**\n\nTo ban a user from using the bot:\n`/ban User_ID`\n\nTo unban them:\n`/unban User_ID`"
-        await callback_query.message.edit_text(text)
+        await callback_query.message.edit_text("🚫 **Ban / Unban:**\n`/ban UserID`\n`/unban UserID`", reply_markup=back_btn)
         
     elif action == "bcinfo":
-        text = "📢 **How to Broadcast:**\n\nReply to ANY message (Photo, Video, Text with buttons) with the command:\n`/broadcast`\n\nThe bot will safely deliver it to all users!"
-        await callback_query.message.edit_text(text)
+        await callback_query.message.edit_text("📢 **Broadcast:**\nReply to any message with `/broadcast`\n\nAdd inline buttons in message text like:\n`[Button Name | URL]`", reply_markup=back_btn)
         
     elif action == "delinfo":
-        text = "❌ **Delete a Movie:**\n\nTo delete a movie and its poster completely from the database, send:\n`/delmovie Movie Name`\n*(e.g., /delmovie Derby)*"
-        await callback_query.message.edit_text(text)
+        await callback_query.message.edit_text("❌ **Delete Movie:**\n`/delmovie Movie Name`", reply_markup=back_btn)
 
     elif action == "clear":
-        buttons = [[InlineKeyboardButton("✅ Confirm Clear All", callback_data="admin_confclear")], [InlineKeyboardButton("❌ Cancel", callback_data="admin_panel_home")]]
-        await callback_query.message.edit_text("⚠️ **Are you sure you want to clear all movies and posters?**", reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = [[InlineKeyboardButton("✅ Confirm Clear", callback_data="admin_confclear")], [InlineKeyboardButton("❌ Cancel", callback_data="admin_home")]]
+        await callback_query.message.edit_text("⚠️ **Clear entirely all movies and posters?**", reply_markup=InlineKeyboardMarkup(buttons))
 
     elif action == "confclear":
         await movies_col.delete_many({})
         await posters_col.delete_many({})
-        await callback_query.message.edit_text("✅ Databases cleared successfully!")
-        
-    elif action == "panel_home":
-        await callback_query.message.delete()
+        await callback_query.message.edit_text("✅ Databases cleared successfully!", reply_markup=back_btn)
 
-# Multi-Admin & Settings Commands
+
+# ================= ZERO-CODE SETTING COMMANDS =================
+
+@app.on_message(filters.command("setstarttext") & filters.private)
+async def set_start_text(client, message):
+    if not await is_admin(message.from_user.id): return
+    if len(message.command) < 2: return await message.reply_text("Usage: `/setstarttext Welcome to bot...`")
+    new_text = message.text.split(None, 1)[1]
+    await settings_col.update_one({"_id": "start_config"}, {"$set": {"text": new_text}}, upsert=True)
+    await message.reply_text("✅ Start text updated successfully!")
+
+@app.on_message(filters.command("setstartpic") & filters.private)
+async def set_start_pic(client, message):
+    if not await is_admin(message.from_user.id): return
+    pic_link = ""
+    if message.reply_to_message and message.reply_to_message.photo:
+        pic_link = message.reply_to_message.photo.file_id
+    elif len(message.command) > 1:
+        pic_link = message.command[1]
+    else:
+        return await message.reply_text("Reply to a photo with `/setstartpic` or provide a URL.")
+    await settings_col.update_one({"_id": "start_config"}, {"$set": {"pic": pic_link}}, upsert=True)
+    await message.reply_text("✅ Custom Start Photo updated!")
+
+@app.on_message(filters.command("usedp") & filters.private)
+async def set_user_dp(client, message):
+    if not await is_admin(message.from_user.id): return
+    await settings_col.update_one({"_id": "start_config"}, {"$set": {"pic": "user_dp"}}, upsert=True)
+    await message.reply_text("✅ Start photo is now set to User's Profile Picture (DP)!")
+
+@app.on_message(filters.command("setwebsite") & filters.private)
+async def set_website_url(client, message):
+    if not await is_admin(message.from_user.id): return
+    if len(message.command) < 2: 
+        return await message.reply_text("Usage: `/setwebsite https://yourwebsite.com`\n(Send `off` to disable Watch Online button)")
+    
+    url = message.command[1]
+    if url.lower() == "off":
+        await settings_col.update_one({"_id": "web_config"}, {"$set": {"url": ""}}, upsert=True)
+        await message.reply_text("✅ Watch Online button Disabled.")
+    else:
+        await settings_col.update_one({"_id": "web_config"}, {"$set": {"url": url}}, upsert=True)
+        await message.reply_text(f"✅ Website configured! Watch Online button will redirect to:\n`{url}/?s=MOVIE_NAME`")
+
 @app.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_id(client, message):
     if not await is_admin(message.from_user.id): return
@@ -264,6 +346,8 @@ async def set_timer(client, message):
         await message.reply_text(f"✅ Auto-Delete timer updated to: `{t}` seconds.")
     except Exception: await message.reply_text("Usage: `/settimer 300`")
 
+
+# --- User Management Commands ---
 @app.on_message(filters.command("addadmin") & filters.private)
 async def add_admin_cmd(client, message):
     if message.from_user.id != ADMIN_ID: return
@@ -300,13 +384,13 @@ async def unban_user(client, message):
         await message.reply_text(f"✅ User `{target_id}` UNBANNED.")
     except Exception: await message.reply_text("Usage: `/unban UserID`")
 
-# --- Single Movie Delete Command ---
+
+# ================= MOVIE MANAGEMENT =================
+
 @app.on_message(filters.command("delmovie") & filters.private)
 async def delete_movie(client, message):
     if not await is_admin(message.from_user.id): return
-    if len(message.command) < 2:
-        await message.reply_text("⚠️ **Usage:** `/delmovie Movie Name`\n*(e.g., /delmovie Derby)*")
-        return
+    if len(message.command) < 2: return await message.reply_text("⚠️ **Usage:** `/delmovie Movie Name`")
         
     query = message.text.split(" ", 1)[1].strip().lower()
     search_pattern = query.replace(" ", ".*")
@@ -319,11 +403,13 @@ async def delete_movie(client, message):
 
 
 # ================= ADVANCED COPY-BROADCAST SYSTEM =================
+# Bug Fixed & Indentation Corrected
 
 @app.on_message(filters.command("broadcast") & filters.private)
 async def advanced_broadcast(client, message):
     if not await is_admin(message.from_user.id): return
-        if not message.reply_to_message:
+    
+    if not message.reply_to_message:
         await message.reply_text(
             "⚠️ **How to use /broadcast:**\n\n"
             "You must reply to a message to send a broadcast.\n\n"
@@ -331,8 +417,7 @@ async def advanced_broadcast(client, message):
             "To add a button, include it at the bottom of your message in this format: `[Button Name | URL]`\n\n"
             "📝 **Example:**\n"
             "NEW MOVIE 🍿\n\n"
-            "[JOIN CHANNEL | https://t.me/yourchannel]\n\n"
-            "👆 *Send a message like the one above, and then reply to it with /broadcast*",
+            "[JOIN CHANNEL | https://t.me/yourchannel]",
             disable_web_page_preview=True
         )
         return
@@ -340,18 +425,15 @@ async def advanced_broadcast(client, message):
     reply_msg = message.reply_to_message
     status_msg = await message.reply_text("📢 **Advanced Broadcast Started...**")
     
-    # --- Custom Button Parsing ---
     raw_text = reply_msg.text or reply_msg.caption or ""
+    clean_text = raw_text
     buttons = []
     
-    # [Button Name](http://link.com) എന്ന ഫോർമാറ്റ് കണ്ടുപിടിക്കാൻ
     matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
-    
     for match in matches:
         btn_text = match.group(1).strip()
         btn_url = match.group(2).strip()
         buttons.append([InlineKeyboardButton(btn_text, url=btn_url)])
-        # ടെക്സ്റ്റിൽ നിന്നും ആ ബ്രാക്കറ്റ് ഭാഗം ഡിലീറ്റ് ചെയ്യുന്നു
         clean_text = clean_text.replace(match.group(0), "")
     
     clean_text = clean_text.strip()
@@ -361,17 +443,9 @@ async def advanced_broadcast(client, message):
     async for user in users_col.find({}):
         try:
             if reply_msg.media:
-                await reply_msg.copy(
-                    chat_id=user["user_id"],
-                    caption=clean_text if buttons else reply_msg.caption,
-                    reply_markup=markup
-                )
+                await reply_msg.copy(chat_id=user["user_id"], caption=clean_text if buttons else reply_msg.caption, reply_markup=markup)
             else:
-                await client.send_message(
-                    chat_id=user["user_id"],
-                    text=clean_text if buttons else reply_msg.text,
-                    reply_markup=markup
-                )
+                await client.send_message(chat_id=user["user_id"], text=clean_text if buttons else reply_msg.text, reply_markup=markup)
             success += 1
             await asyncio.sleep(0.05) 
         except Exception:
@@ -410,6 +484,7 @@ async def save_file(client, message):
             )
         except Exception: pass
 
+
 # ================= SMART REGEX SEARCH =================
 
 @app.on_message(filters.text & filters.private)
@@ -434,8 +509,6 @@ async def search_file(client, message):
     for result in results:
         size_mb = round(result["file_size"] / (1024 * 1024), 2)
         full_name = result['file_name']
-        
-        # --- Trim the filename to make buttons smaller ---
         max_length = 30
         short_name = full_name[:max_length] + "..." if len(full_name) > max_length else full_name
         
@@ -452,7 +525,8 @@ async def search_file(client, message):
     else:
         await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-# ================= SEND FILE & AUTO DELETE =================
+
+# ================= SEND FILE, AUTO DELETE & WATCH ONLINE =================
 
 async def delete_after_delay(message, delay):
     await asyncio.sleep(delay)
@@ -470,10 +544,22 @@ async def send_file(client, callback_query):
         await callback_query.answer("Sending file... Please wait!", show_alert=False)
         del_time = await get_delete_time()
         del_mins = del_time // 60
+        
+        # --- WATCH ONLINE BUTTON LOGIC ---
+        reply_markup = None
+        base_url = await get_website_link()
+        if base_url:
+            # വെബ്സൈറ്റ് ലിങ്കിനൊപ്പം സിനിമയുടെ പേര് ചേർക്കുന്നു
+            search_query = quote(result['file_name'])
+            watch_link = f"{base_url.rstrip('/')}/?s={search_query}"
+            btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
+            reply_markup = InlineKeyboardMarkup(btn)
+        
         sent_msg = await client.send_cached_media(
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
-            caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes to prevent copyright issues.*"
+            caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
+            reply_markup=reply_markup
         )
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
@@ -489,5 +575,5 @@ async def request_movie(client, callback_query):
     except Exception:
         await callback_query.answer("Failed to contact the admin.", show_alert=True)
 
-print("Bot started successfully with 5+ Ultimate Features & Custom Broadcast!", flush=True)
+print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
 app.run()
