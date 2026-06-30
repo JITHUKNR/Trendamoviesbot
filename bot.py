@@ -5,7 +5,7 @@ import os
 import uuid
 import certifi
 import re
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters, enums, types
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
 from flask import Flask
@@ -123,9 +123,9 @@ async def check_user_access(client, message):
             except Exception:
                 await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
             return False
-                        except Exception:
+        except Exception:
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            await message.reply_text("⚠️ **Error verifying subscription! Please join the channel first.**", reply_markup=InlineKeyboardMarkup(btn))
+            await message.reply_text("⚠️ Error verifying subscription! Please join the channel first.", reply_markup=InlineKeyboardMarkup(btn))
             return False
 
 # ================= START COMMAND =================
@@ -576,7 +576,6 @@ async def send_file(client, callback_query):
         del_time = await get_delete_time()
         del_mins = del_time // 60
         
-        # --- WATCH ONLINE BUTTON LOGIC ---
         reply_markup = None
         base_url = await get_website_link()
         if base_url:
@@ -585,11 +584,7 @@ async def send_file(client, callback_query):
             btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
             reply_markup = InlineKeyboardMarkup(btn)
         
-        # --- NEW: CUSTOM THUMBNAIL LOGIC ---
-        thumb_config = await settings_col.find_one({"_id": "thumb_config"})
-        thumb_file_id = thumb_config.get("file_id") if thumb_config else None
-        
-                # --- NEW: CUSTOM THUMBNAIL LOGIC ---
+        # Thumbnail logic
         thumb_config = await settings_col.find_one({"_id": "thumb_config"})
         thumb_file_id = thumb_config.get("file_id") if thumb_config else None
         
@@ -600,7 +595,6 @@ async def send_file(client, callback_query):
             reply_markup=reply_markup
         )
         
-        # തംബ്നൈൽ ഉണ്ടെങ്കിൽ മാത്രം അത് അപ്ഡേറ്റ് ചെയ്യുന്നു (ഇതാണ് ശരിയായ വഴി)
         if thumb_file_id:
             try:
                 await client.edit_message_media(
