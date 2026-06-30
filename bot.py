@@ -104,21 +104,22 @@ async def check_user_access(client, message):
     # 2. Strict FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
     
-    # 0 എന്ന് സെറ്റ് ചെയ്താൽ മാത്രം FSub ഒഴിവാക്കാം, അല്ലാത്തപ്പോൾ കർശനമായി ചെക്ക് ചെയ്യും
     if fsub_channel != 0:
         try:
             member = await client.get_chat_member(fsub_channel, user_id)
             if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
                 raise UserNotParticipant
         except Exception: 
-            # യൂസർ ജോയിൻ ചെയ്തിട്ടില്ലെങ്കിലും, ബോട്ട് ചാനലിൽ അഡ്മിൻ അല്ലെങ്കിലും ഈ മെസ്സേജ് പോകും!
-            btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
+            # ഇവിടെയാണ് നമ്മൾ പുതിയ "I Have Joined" ബട്ടൺ കൊടുക്കുന്നത്
+            btn = [
+                [InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)],
+                [InlineKeyboardButton("🔄 I Have Joined", callback_data="check_joined")]
+            ]
             error_msg = (
                 "⚠️ **Please join our main channel to use this bot and download movies!**\n\n"
-                "Click the button below to join, then come back and search again."
+                "Click the button below to join, then click 'I Have Joined'."
             )
             try:
-                # Custom Start Pic ഉണ്ടെങ്കിൽ അത് വെച്ച് അയക്കാൻ
                 _, custom_pic = await get_start_config()
                 pic_to_send = custom_pic if custom_pic != "user_dp" else DEFAULT_START_PIC
                 await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
@@ -587,4 +588,23 @@ async def request_movie(client, callback_query):
         await callback_query.answer("Failed to contact the admin.", show_alert=True)
 
 print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
+# ================= CHECK JOINED BUTTON LOGIC =================
+@app.on_callback_query(filters.regex(r"^check_joined$"))
+async def verify_joined(client, callback_query):
+    user_id = callback_query.from_user.id
+    fsub_channel, _ = await get_fsub_config()
+    
+    if fsub_channel != 0:
+        try:
+            member = await client.get_chat_member(fsub_channel, user_id)
+            if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
+                # ജോയിൻ ചെയ്തിട്ടില്ലെങ്കിൽ സ്ക്രീനിൽ കാണിക്കുന്ന വാണിംഗ്
+                await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
+            else:
+                # ജോയിൻ ചെയ്തിട്ടുണ്ടെങ്കിൽ ആ മെസ്സേജ് ഡിലീറ്റ് ആകുന്നു!
+                await callback_query.message.delete()
+                await callback_query.answer("✅ Thank you for joining! Now you can search for movies.", show_alert=True)
+        except Exception:
+            await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
+
 app.run()
