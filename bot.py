@@ -106,11 +106,8 @@ async def check_user_access(client, message):
     
     if fsub_channel != 0:
         try:
-            member = await client.get_chat_member(fsub_channel, user_id)
-            if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
-                raise UserNotParticipant
-        except Exception: 
-            # ഇവിടെയാണ് നമ്മൾ പുതിയ "I Have Joined" ബട്ടൺ കൊടുക്കുന്നത്
+            await client.get_chat_member(fsub_channel, user_id)
+        except UserNotParticipant:
             btn = [
                 [InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)],
                 [InlineKeyboardButton("🔄 I Have Joined", callback_data="check_joined")]
@@ -125,10 +122,12 @@ async def check_user_access(client, message):
                 await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
             except Exception:
                 await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
-            return False 
-            
-    return True
-
+            return False
+                except Exception:
+            # എറർ വന്നാൽ സിനിമ കിട്ടില്ല, ജോയിൻ ചെയ്യാൻ പറയണം
+            btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
+            await message.reply_text("⚠️ **Error verifying subscription! Please join the channel first.**", reply_markup=InlineKeyboardMarkup(btn))
+            return False
 
 # ================= START COMMAND =================
 
