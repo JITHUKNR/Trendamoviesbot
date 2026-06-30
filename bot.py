@@ -92,41 +92,62 @@ async def add_user(user_id):
 
 async def check_user_access(client, message):
     user_id = message.from_user.id
-    
+
     # 1. Ban Check
     try:
         user = await users_col.find_one({"user_id": user_id})
         if user and user.get("is_banned") == 1:
             await message.reply_text("⛔ **You are banned from using this bot.**")
             return False
-    except Exception: pass
-            
+    except Exception:
+        pass
+
     # 2. Strict FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
-    
+
     if fsub_channel != 0:
         try:
             member = await client.get_chat_member(fsub_channel, user_id)
-            if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
+
+            if member.status in [
+                enums.ChatMemberStatus.BANNED,
+                enums.ChatMemberStatus.LEFT,
+                enums.ChatMemberStatus.RESTRICTED
+            ]:
                 raise UserNotParticipant
-        except Exception: 
-            # ഇവിടെയാണ് നമ്മൾ പുതിയ "I Have Joined" ബട്ടൺ കൊടുക്കുന്നത്
+
+        except UserNotParticipant:
             btn = [
                 [InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)],
                 [InlineKeyboardButton("🔄 I Have Joined", callback_data="check_joined")]
             ]
+
             error_msg = (
                 "⚠️ **Please join our main channel to use this bot and download movies!**\n\n"
                 "Click the button below to join, then click 'I Have Joined'."
             )
+
             try:
                 _, custom_pic = await get_start_config()
                 pic_to_send = custom_pic if custom_pic != "user_dp" else DEFAULT_START_PIC
-                await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
+
+                await message.reply_photo(
+                    photo=pic_to_send,
+                    caption=error_msg,
+                    reply_markup=InlineKeyboardMarkup(btn)
+                )
             except Exception:
-                await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
-            return False 
-            
+                await message.reply_text(
+                    error_msg,
+                    reply_markup=InlineKeyboardMarkup(btn)
+                )
+
+            return False
+
+        except Exception as e:
+            print(f"FSub Error: {e}")
+            return True
+
     return True
 
 
