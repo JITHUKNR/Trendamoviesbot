@@ -99,34 +99,24 @@ async def check_user_access(client, message):
         if user and user.get("is_banned") == 1:
             await message.reply_text("⛔ **You are banned from using this bot.**")
             return False
-    except Exception: pass
+    except: pass
             
     # 2. Strict FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
-    
     if fsub_channel != 0:
         try:
             await client.get_chat_member(fsub_channel, user_id)
+            return True
         except UserNotParticipant:
-            btn = [
-                [InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)],
-                [InlineKeyboardButton("🔄 I Have Joined", callback_data="check_joined")]
-            ]
-            error_msg = (
-                "⚠️ **Please join our main channel to use this bot and download movies!**\n\n"
-                "Click the button below to join, then click 'I Have Joined'."
-            )
-            try:
-                _, custom_pic = await get_start_config()
-                pic_to_send = custom_pic if custom_pic != "user_dp" else DEFAULT_START_PIC
-                await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
-            except Exception:
-                await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
+            btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
+            await message.reply_text("⚠️ **Please join the channel first to use this bot.**", reply_markup=InlineKeyboardMarkup(btn))
             return False
         except Exception:
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            await message.reply_text("⚠️ Error verifying subscription! Please join the channel first.", reply_markup=InlineKeyboardMarkup(btn))
+            await message.reply_text("⚠️ **Error verifying subscription! Please join the channel first.**", reply_markup=InlineKeyboardMarkup(btn))
             return False
+    return True
+
 
 # ================= START COMMAND =================
 
