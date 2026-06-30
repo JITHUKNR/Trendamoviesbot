@@ -5,7 +5,7 @@ import os
 import uuid
 import certifi
 import re
-from pyrogram import Client, filters, enums, types
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import UserNotParticipant
 from flask import Flask
@@ -99,22 +99,34 @@ async def check_user_access(client, message):
         if user and user.get("is_banned") == 1:
             await message.reply_text("⛔ **You are banned from using this bot.**")
             return False
-    except: pass
+    except Exception: pass
             
     # 2. Strict FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
+    
     if fsub_channel != 0:
         try:
-            await client.get_chat_member(fsub_channel, user_id)
-            return True
-        except UserNotParticipant:
-            btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            await message.reply_text("⚠️ **Please join the channel first to use this bot.**", reply_markup=InlineKeyboardMarkup(btn))
-            return False
-        except Exception:
-            btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            await message.reply_text("⚠️ **Error verifying subscription! Please join the channel first.**", reply_markup=InlineKeyboardMarkup(btn))
-            return False
+            member = await client.get_chat_member(fsub_channel, user_id)
+            if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
+                raise UserNotParticipant
+        except Exception: 
+            # ഇവിടെയാണ് നമ്മൾ പുതിയ "I Have Joined" ബട്ടൺ കൊടുക്കുന്നത്
+            btn = [
+                [InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)],
+                [InlineKeyboardButton("🔄 I Have Joined", callback_data="check_joined")]
+            ]
+            error_msg = (
+                "⚠️ **Please join our main channel to use this bot and download movies!**\n\n"
+                "Click the button below to join, then click 'I Have Joined'."
+            )
+            try:
+                _, custom_pic = await get_start_config()
+                pic_to_send = custom_pic if custom_pic != "user_dp" else DEFAULT_START_PIC
+                await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
+            except Exception:
+                await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
+            return False 
+            
     return True
 
 
@@ -522,33 +534,29 @@ async def search_file(client, message):
     results = await cursor.to_list(length=50)
     
     if not results:
-        # ഗൂഗിൾ സെർച്ച് ലിങ്ക് ഉണ്ടാക്കുന്നു
-        search_query = quote(query)
-        google_url = f"https://www.google.com/search?q={search_query}+movie+spelling"
-        
-        btn = [
-            [InlineKeyboardButton("📩 Request Movie to Admin", callback_data=f"req_{query[:30]}")],
-            [InlineKeyboardButton("🔍 Check Correct Spelling", url=google_url)]
-        ]
-        await message.reply_text("🥲 Sorry, this movie is not available. Please check the spelling on Google.", reply_markup=InlineKeyboardMarkup(btn))
+        btn = [[InlineKeyboardButton("📩 Request Movie to Admin", callback_data=f"req_{query[:30]}")]]
+        await message.reply_text("🥲 **Sorry, this movie is not available.**", reply_markup=InlineKeyboardMarkup(btn))
         return
 
     buttons = []
     for result in results:
         size_mb = round(result["file_size"] / (1024 * 1024), 2)
         full_name = result['file_name']
-        short_name = full_name[:30] + "..." if len(full_name) > 30 else full_name
-        buttons.append([InlineKeyboardButton(f"[{size_mb}MB] {short_name}", callback_data=f"send_{result['short_id']}")])
+        max_length = 30
+        short_name = full_name[:max_length] + "..." if len(full_name) > max_length else full_name
+        
+        btn_text = f"[{size_mb}MB] {short_name}"
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"send_{result['short_id']}")])
 
     poster = await posters_col.find_one({"title": query.lower()})
     if poster:
+        final_caption = poster["caption"] + "\n\n👇 **Choose Quality to Download:**"
         try:
-            await message.reply_photo(photo=poster["file_id"], caption=poster["caption"] + "\n\n👇 Choose Quality to Download:", reply_markup=InlineKeyboardMarkup(buttons))
-        except:
-            await message.reply_text("🍿 Here are your search results:", reply_markup=InlineKeyboardMarkup(buttons))
+            await message.reply_photo(photo=poster["file_id"], caption=final_caption, reply_markup=InlineKeyboardMarkup(buttons))
+        except Exception:
+            await message.reply_text(final_caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await message.reply_text("🍿 Here are your search results:", reply_markup=InlineKeyboardMarkup(buttons))
-
+        await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
 
 # ================= SEND FILE, AUTO DELETE & WATCH ONLINE =================
@@ -570,15 +578,16 @@ async def send_file(client, callback_query):
         del_time = await get_delete_time()
         del_mins = del_time // 60
         
+        # --- WATCH ONLINE BUTTON LOGIC ---
         reply_markup = None
         base_url = await get_website_link()
         if base_url:
+            # വെബ്സൈറ്റ് ലിങ്കിനൊപ്പം സിനിമയുടെ പേര് ചേർക്കുന്നു
             search_query = quote(result['file_name'])
             watch_link = f"{base_url.rstrip('/')}/?s={search_query}"
             btn = [[InlineKeyboardButton("💻 Watch Online", url=watch_link)]]
             reply_markup = InlineKeyboardMarkup(btn)
-        
-        # Thumbnail logic
+        # --- NEW: CUSTOM THUMBNAIL LOGIC ---
         thumb_config = await settings_col.find_one({"_id": "thumb_config"})
         thumb_file_id = thumb_config.get("file_id") if thumb_config else None
         
@@ -586,21 +595,9 @@ async def send_file(client, callback_query):
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
             caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            thumb=thumb_file_id
         )
-        
-        if thumb_file_id:
-            try:
-                await client.edit_message_media(
-                    chat_id=sent_msg.chat.id,
-                    message_id=sent_msg.id,
-                    media=types.InputMediaDocument(
-                        media=result["file_id"],
-                        thumb=thumb_file_id,
-                        caption=sent_msg.caption
-                    )
-                )
-            except Exception: pass
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
         await callback_query.answer("File not found!", show_alert=True)
