@@ -301,16 +301,45 @@ async def delete_movie(client, message):
 async def advanced_broadcast(client, message):
     if not await is_admin(message.from_user.id): return
     if not message.reply_to_message:
-        await message.reply_text("⚠️ **How to use:**\nReply to any message (Text, Photo, Video, Animation with/without buttons) with `/broadcast` to send it to all users.")
+        await message.reply_text("⚠️ **How to use:**\nReply to any message with `/broadcast` to send it.")
         return
 
     reply_msg = message.reply_to_message
     status_msg = await message.reply_text("📢 **Advanced Broadcast Started...**")
     
+    # --- Custom Button Parsing ---
+    raw_text = reply_msg.text or reply_msg.caption or ""
+    buttons = []
+    
+    # [Button Name](http://link.com) എന്ന ഫോർമാറ്റ് കണ്ടുപിടിക്കാൻ
+    matches = re.finditer(r'\[(.+?)\]\((.+?)\)', raw_text)
+    clean_text = raw_text
+    
+    for match in matches:
+        btn_text = match.group(1).strip()
+        btn_url = match.group(2).strip()
+        buttons.append([InlineKeyboardButton(btn_text, url=btn_url)])
+        # ടെക്സ്റ്റിൽ നിന്നും ആ ബ്രാക്കറ്റ് ഭാഗം ഡിലീറ്റ് ചെയ്യുന്നു
+        clean_text = clean_text.replace(match.group(0), "")
+    
+    clean_text = clean_text.strip()
+    markup = InlineKeyboardMarkup(buttons) if buttons else reply_msg.reply_markup
+
     success, failed = 0, 0
     async for user in users_col.find({}):
         try:
-            await reply_msg.copy(chat_id=user["user_id"])
+            if reply_msg.media:
+                await reply_msg.copy(
+                    chat_id=user["user_id"],
+                    caption=clean_text if buttons else reply_msg.caption,
+                    reply_markup=markup
+                )
+            else:
+                await client.send_message(
+                    chat_id=user["user_id"],
+                    text=clean_text if buttons else reply_msg.text,
+                    reply_markup=markup
+                )
             success += 1
             await asyncio.sleep(0.05) 
         except Exception:
