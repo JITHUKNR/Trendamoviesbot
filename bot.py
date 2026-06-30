@@ -136,7 +136,6 @@ async def start_command(client, message):
     if not await add_user(message.from_user.id):
         await message.reply_text("⚠️ **Database is not connected yet!**")
         return
-    if not await check_user_access(client, message): return
     
     _fsub_link = await get_fsub_config()
     buttons = [
