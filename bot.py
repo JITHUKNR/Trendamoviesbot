@@ -92,6 +92,8 @@ async def add_user(user_id):
 
 async def check_user_access(client, message):
     user_id = message.from_user.id
+    
+    # 1. Ban Check
     try:
         user = await users_col.find_one({"user_id": user_id})
         if user and user.get("is_banned") == 1:
@@ -99,21 +101,31 @@ async def check_user_access(client, message):
             return False
     except Exception: pass
             
+    # 2. Strict FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
-    if fsub_channel != -100:
+    
+    # 0 എന്ന് സെറ്റ് ചെയ്താൽ മാത്രം FSub ഒഴിവാക്കാം, അല്ലാത്തപ്പോൾ കർശനമായി ചെക്ക് ചെയ്യും
+    if fsub_channel != 0:
         try:
             member = await client.get_chat_member(fsub_channel, user_id)
             if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.RESTRICTED]:
                 raise UserNotParticipant
-        except UserNotParticipant:
+        except Exception: 
+            # യൂസർ ജോയിൻ ചെയ്തിട്ടില്ലെങ്കിലും, ബോട്ട് ചാനലിൽ അഡ്മിൻ അല്ലെങ്കിലും ഈ മെസ്സേജ് പോകും!
             btn = [[InlineKeyboardButton("📢 Join Our Channel", url=fsub_link)]]
-            error_msg = "⚠️ **Please join our main channel to use this bot and download movies!**\n\nClick the button below to join, then come back and search again."
+            error_msg = (
+                "⚠️ **Please join our main channel to use this bot and download movies!**\n\n"
+                "Click the button below to join, then come back and search again."
+            )
             try:
-                await message.reply_photo(photo=DEFAULT_START_PIC, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
+                # Custom Start Pic ഉണ്ടെങ്കിൽ അത് വെച്ച് അയക്കാൻ
+                _, custom_pic = await get_start_config()
+                pic_to_send = custom_pic if custom_pic != "user_dp" else DEFAULT_START_PIC
+                await message.reply_photo(photo=pic_to_send, caption=error_msg, reply_markup=InlineKeyboardMarkup(btn))
             except Exception:
                 await message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup(btn))
-            return False
-        except Exception: pass 
+            return False 
+            
     return True
 
 
