@@ -23,7 +23,6 @@ def run_server():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port)
 
-Thread(target=run_server).start()
 # ------------------
 
 # Configuration
@@ -290,9 +289,14 @@ async def verify_joined(client, callback_query):
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
-print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
-
-# അഡ്മിൻ ഫയലിലെ കോഡുകൾ ഇവിടെ ബന്ധിപ്പിക്കുന്നു
-import admin
-
-app.run()
+# ================= SERVER & BOT STARTUP =================
+if __name__ == "__main__":
+    # സെർവർ മെയിൻ റണ്ണിൽ മാത്രം സ്റ്റാർട്ട് ആകാൻ
+    Thread(target=run_server).start()
+    
+    print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
+    
+    # അഡ്മിൻ ഫയലിലെ കോഡുകൾ ഇവിടെ ബന്ധിപ്പിക്കുന്നു
+    import admin
+    
+    app.run()
