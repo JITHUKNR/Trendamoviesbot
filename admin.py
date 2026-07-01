@@ -95,7 +95,8 @@ async def admin_menus(client, callback_query):
 
 # ================= CALLBACK ACTION HANDLERS =================
 
-@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|clear|confclear)$"))
+# Added 'setthumb' to the regex list so the button actually works
+@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|clear|confclear|setthumb)$"))
 async def admin_actions(client, callback_query):
     if not await is_admin(callback_query.from_user.id): 
         return
@@ -135,6 +136,9 @@ async def admin_actions(client, callback_query):
         
     elif action == "delinfo":
         await callback_query.message.edit_text("❌ **Delete Movie:**\n`/delmovie Movie Name`", reply_markup=back_btn)
+        
+    elif action == "setthumb":
+        await callback_query.message.edit_text("🖼️ **Set File Thumbnail:**\n\nReply to any photo with the command:\n`/setthumb`\n\nOr use:\n`/setthumb Photo_URL`", reply_markup=back_btn)
 
     elif action == "clear":
         buttons = [[InlineKeyboardButton("✅ Confirm Clear", callback_data="admin_confclear")], [InlineKeyboardButton("❌ Cancel", callback_data="admin_home")]]
@@ -332,7 +336,8 @@ async def delete_movie(client, message):
         del_poster = await posters_col.delete_one({"title": query})
         del_poster_count = del_poster.deleted_count
     
-    text = f"✅ **Successfully Deleted!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files_count}`\n🖼️ Poster deleted: `{"Yes" if del_poster_count > 0 else "No"}`"
+    # Fixed the nested double quotes issue here
+    text = f"✅ **Successfully Deleted!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files_count}`\n🖼️ Poster deleted: `{'Yes' if del_poster_count > 0 else 'No'}`"
     await message.reply_text(text)
 
 
@@ -363,6 +368,7 @@ async def advanced_broadcast(client, message):
     clean_text = raw_text
     buttons = []
     
+    # Note: New regex checks for `[Button Name | URL]` format as per your updated code.
     matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
     for match in matches:
         btn_text = match.group(1).strip()
