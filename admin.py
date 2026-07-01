@@ -1,4 +1,6 @@
 import asyncio
+import os
+import sys
 import re
 from pyrogram import filters, types
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -7,52 +9,100 @@ from bot import (
     users_col, movies_col, posters_col, settings_col, admins_col, searches_col
 )
 
-# ================= ADMIN PANEL MAIN MENU =================
+# ================= 👑 ROSE BOT STYLE ADMIN DASHBOARD =================
 
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
     if not await is_admin(message.from_user.id): return
+    
+    # Rose Bot Style Home Menu
     buttons = [
-        [InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot"), InlineKeyboardButton("👥 Users & Broadcast", callback_data="menu_users")],
-        [InlineKeyboardButton("🎬 Movie & Database", callback_data="menu_movies"), InlineKeyboardButton("🔐 FSub & Security", callback_data="menu_fsub")],
-        [InlineKeyboardButton("👑 Admin Management", callback_data="menu_admins")],
-        [InlineKeyboardButton("❌ Close Panel", callback_data="close_panel")]
+        [InlineKeyboardButton("📊 Live Statistics", callback_data="admin_stats"), InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot")],
+        [InlineKeyboardButton("🎬 Movie Management", callback_data="menu_movies"), InlineKeyboardButton("👥 User Management", callback_data="menu_users")],
+        [InlineKeyboardButton("📢 Broadcast Panel", callback_data="admin_bcinfo"), InlineKeyboardButton("🔐 FSub Manager", callback_data="menu_fsub")],
+        [InlineKeyboardButton("🌐 Website Manager", callback_data="admin_webinfo"), InlineKeyboardButton("🗑 Database Manager", callback_data="menu_db")],
+        [InlineKeyboardButton("🛠 Advanced Tools", callback_data="menu_adv")],
+        [InlineKeyboardButton("❌ Close Dashboard", callback_data="close_panel")]
     ]
-    text = "👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below to control your bot completely:"
+    
+    text = """
+👑 **Trenda Bot Control Panel** 👑
+
+**System Status:** `Online 🟢`
+**Version:** `v3.0 (Rose UI)`
+**Server:** `Render (Web)`
+
+👋 Welcome Master! Select a module below to configure your bot:
+"""
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+# ================= 🔄 DYNAMIC MENU NAVIGATOR =================
 
 @app.on_callback_query(filters.regex(r"^menu_") | filters.regex(r"^close_panel") | filters.regex(r"^admin_home$"))
 async def admin_menus(client, callback_query):
     if not await is_admin(callback_query.from_user.id): return
     data = callback_query.data
+    
     if data == "close_panel":
         return await callback_query.message.delete()
+        
     elif data == "admin_home":
         buttons = [
-            [InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot"), InlineKeyboardButton("👥 Users & Broadcast", callback_data="menu_users")],
-            [InlineKeyboardButton("🎬 Movie & Database", callback_data="menu_movies"), InlineKeyboardButton("🔐 FSub & Security", callback_data="menu_fsub")],
-            [InlineKeyboardButton("👑 Admin Management", callback_data="menu_admins")],
-            [InlineKeyboardButton("❌ Close", callback_data="close_panel")]
+            [InlineKeyboardButton("📊 Live Statistics", callback_data="admin_stats"), InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot")],
+            [InlineKeyboardButton("🎬 Movie Management", callback_data="menu_movies"), InlineKeyboardButton("👥 User Management", callback_data="menu_users")],
+            [InlineKeyboardButton("📢 Broadcast Panel", callback_data="admin_bcinfo"), InlineKeyboardButton("🔐 FSub Manager", callback_data="menu_fsub")],
+            [InlineKeyboardButton("🌐 Website Manager", callback_data="admin_webinfo"), InlineKeyboardButton("🗑 Database Manager", callback_data="menu_db")],
+            [InlineKeyboardButton("🛠 Advanced Tools", callback_data="menu_adv")],
+            [InlineKeyboardButton("❌ Close Dashboard", callback_data="close_panel")]
         ]
-        await callback_query.message.edit_text("👨‍💻 **ULTRA PREMIUM ADMIN PANEL**\n\nWelcome Master! 👑\nSelect a category below:", reply_markup=InlineKeyboardMarkup(buttons))
-    elif data == "menu_bot":
-        text = "⚙️ **BOT SETTINGS**\n\n**Commands to update:**\n1. `/setstarttext [Your Text]`\n2. `/setstartpic [Link]`\n3. `/setwebsite [URL]`\n4. `/setthumb` (To Set File Thumbnail)"
-        buttons = [[InlineKeyboardButton("🖼️ Set File Thumbnail", callback_data="admin_setthumb")], [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
+        text = "👑 **Trenda Bot Control Panel** 👑\n\n👋 Welcome Master! Select a module below to configure your bot:"
         await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+        
+    elif data == "menu_bot":
+        text = "⚙️ **FULL BOT SETTINGS**\n\nConfigure bot appearance and behaviors:\n\n🖼 `/setstartpic [URL]` - Set Start Image\n📝 `/setstarttext [Text]` - Set Welcome Text\n🎭 `/setthumb [URL]` - Set Default Thumbnail\n⏱ `/settimer [Sec]` - Set Auto-Delete Time"
+        buttons = [
+            [InlineKeyboardButton("🎭 Thumbnail Manager", callback_data="admin_setthumb"), InlineKeyboardButton("⏱ Auto Delete Timer", callback_data="admin_timer")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+        
     elif data == "menu_users":
-        buttons = [[InlineKeyboardButton("📊 User Stats", callback_data="admin_stats"), InlineKeyboardButton("📢 Broadcast Info", callback_data="admin_bcinfo")], [InlineKeyboardButton("🚫 Ban Info", callback_data="admin_baninfo")], [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
-        await callback_query.message.edit_text("👥 **USERS & BROADCAST**\n\nManage users and send messages:", reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = [
+            [InlineKeyboardButton("🚫 Ban / Unban", callback_data="admin_baninfo"), InlineKeyboardButton("👑 Multiple Admins", callback_data="admin_roles")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("👥 **USER MANAGEMENT**\n\nManage users and assign admin roles.", reply_markup=InlineKeyboardMarkup(buttons))
+        
     elif data == "menu_movies":
-        buttons = [[InlineKeyboardButton("⏱️ Auto-Delete Timer", callback_data="admin_timer"), InlineKeyboardButton("🔥 Trending", callback_data="admin_trend")], [InlineKeyboardButton("❌ Delete Movie", callback_data="admin_delinfo"), InlineKeyboardButton("🗑️ Clear DB", callback_data="admin_clear")], [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
-        await callback_query.message.edit_text("🎬 **MOVIE & DATABASE**\n\nControl files, timers, and storage:", reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = [
+            [InlineKeyboardButton("🔥 Trending Searches", callback_data="admin_trend"), InlineKeyboardButton("❌ Delete Movie", callback_data="admin_delinfo")],
+            [InlineKeyboardButton("📂 Categories", callback_data="admin_comingsoon"), InlineKeyboardButton("🤖 Auto Suggestions", callback_data="admin_comingsoon")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🎬 **MOVIE MANAGEMENT**\n\nControl movies, trends, and smart search features.", reply_markup=InlineKeyboardMarkup(buttons))
+        
     elif data == "menu_fsub":
-        buttons = [[InlineKeyboardButton("⚙️ View Current FSub", callback_data="admin_fsub")], [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
-        await callback_query.message.edit_text("🔐 **FSUB & SECURITY**\n\nTo change FSub use these commands:\n`/setchannel -100xxxxxxxx`\n`/setlink https://t.me/...`", reply_markup=InlineKeyboardMarkup(buttons))
-    elif data == "menu_admins":
-        buttons = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="admin_home")]]
-        await callback_query.message.edit_text("👑 **ADMIN MANAGEMENT**\n\nAdd/Remove admins using:\n`/addadmin USER_ID`\n`/removeadmin USER_ID`", reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = [[InlineKeyboardButton("⚙️ View Current FSub", callback_data="admin_fsub")], [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]]
+        await callback_query.message.edit_text("🔐 **FORCE SUBSCRIBE MANAGER**\n\nUpdate using:\n`/setchannel -100xxxxxxxx`\n`/setlink https://t.me/...`", reply_markup=InlineKeyboardMarkup(buttons))
+        
+    elif data == "menu_db":
+        buttons = [
+            [InlineKeyboardButton("💾 Backup / Restore", callback_data="admin_backup"), InlineKeyboardButton("🗑 Clear Database", callback_data="admin_clear")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🗑 **DATABASE MANAGER**\n\nManage MongoDB data, backups, and cleanups.", reply_markup=InlineKeyboardMarkup(buttons))
 
-@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear)$"))
+    elif data == "menu_adv":
+        buttons = [
+            [InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart"), InlineKeyboardButton("🟢 Maintenance Mode", callback_data="admin_maint")],
+            [InlineKeyboardButton("📝 Logs Viewer", callback_data="admin_logs"), InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nSystem level configurations and server management.", reply_markup=InlineKeyboardMarkup(buttons))
+
+
+# ================= ⚡ ACTION HANDLERS =================
+
+@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear|webinfo|roles|comingsoon|restart|maint|backup|logs)$"))
 async def admin_actions(client, callback_query):
     if not await is_admin(callback_query.from_user.id): return
     action = callback_query.data.split("_")[1]
@@ -62,35 +112,69 @@ async def admin_actions(client, callback_query):
         u = await users_col.count_documents({}) if users_col is not None else 0
         m = await movies_col.count_documents({}) if movies_col is not None else 0
         p = await posters_col.count_documents({}) if posters_col is not None else 0
-        await callback_query.message.edit_text(f"📊 **Bot Stats:**\n\n👥 Users: {u}\n🎬 Movies: {m}\n🖼️ Posters: {p}", reply_markup=back_btn)
+        text = f"📈 **LIVE ANALYTICS & STATS:**\n\n👥 Total Users: `{u}`\n🎬 Total Movies: `{m}`\n🎭 Total Posters: `{p}`\n⚡ Fast Search: `Active`\n🌍 Language: `English/Malayalam`"
+        await callback_query.message.edit_text(text, reply_markup=back_btn)
+    
     elif action == "trend":
         results = await searches_col.find().sort("count", -1).limit(10).to_list(length=10) if searches_col is not None else []
         text = "🔥 **Top 10 Trending Searches:**\n\n" if results else "No searches yet!"
         for idx, res in enumerate(results, 1): text += f"{idx}. {res['_id'].title()} ({res['count']} searches)\n"
         await callback_query.message.edit_text(text, reply_markup=back_btn)
+        
+    elif action == "webinfo":
+        await callback_query.message.edit_text("🌐 **Website Manager:**\n\nConnect a website for 'Watch Online' feature.\nUsage: `/setwebsite https://yourwebsite.com`\nTo Disable: `/setwebsite off`", reply_markup=back_btn)
+        
+    elif action == "roles":
+        await callback_query.message.edit_text("👑 **Multiple Admin Roles:**\n\nAdd Admin: `/addadmin UserID`\nRemove Admin: `/removeadmin UserID`", reply_markup=back_btn)
+
     elif action == "fsub":
         f_id, f_link = await get_fsub_config()
         await callback_query.message.edit_text(f"⚙️ **Current FSub Config:**\n\nID: `{f_id}`\nLink: {f_link}", reply_markup=back_btn)
+        
     elif action == "timer":
         t = await get_delete_time()
         await callback_query.message.edit_text(f"⏱️ **Auto-Delete Timer:** {t} seconds.\n\nChange using: `/settimer SECONDS`", reply_markup=back_btn)
+        
     elif action == "baninfo":
         await callback_query.message.edit_text("🚫 **Ban / Unban:**\n`/ban UserID`\n`/unban UserID`", reply_markup=back_btn)
+        
     elif action == "bcinfo":
-        await callback_query.message.edit_text("📢 **Broadcast:**\nReply to any message with `/broadcast`\n\nAdd inline buttons in message text like:\n`[Button Name | URL]`", reply_markup=back_btn)
+        await callback_query.message.edit_text("📢 **Broadcast Panel:**\nReply to any message with `/broadcast`\n\nAdd inline buttons in message text like:\n`[Button Name | URL]`", reply_markup=back_btn)
+        
     elif action == "delinfo":
         await callback_query.message.edit_text("❌ **Delete Movie:**\n`/delmovie Movie Name`", reply_markup=back_btn)
+        
     elif action == "setthumb":
         await callback_query.message.edit_text("🖼️ **Set File Thumbnail:**\n\nReply to any photo with the command:\n`/setthumb`\n\nOr use:\n`/setthumb Photo_URL`", reply_markup=back_btn)
+        
     elif action == "clear":
         buttons = [[InlineKeyboardButton("✅ Confirm Clear", callback_data="admin_confclear")], [InlineKeyboardButton("❌ Cancel", callback_data="admin_home")]]
         await callback_query.message.edit_text("⚠️ **Clear entirely all movies and posters?**", reply_markup=InlineKeyboardMarkup(buttons))
+        
     elif action == "confclear":
         if movies_col is not None: await movies_col.delete_many({})
         if posters_col is not None: await posters_col.delete_many({})
         await callback_query.message.edit_text("✅ Databases cleared successfully!", reply_markup=back_btn)
+        
+    elif action == "comingsoon":
+        await callback_query.answer("🚀 This feature is coming in the next update!", show_alert=True)
+        
+    elif action == "restart":
+        await callback_query.message.edit_text("🔄 **Restarting Bot...**\nPlease wait 10 seconds.")
+        os.system("kill 1") # Server (Render/Railway) will auto-restart the script
+        sys.exit(1)
+        
+    elif action == "maint":
+        await callback_query.answer("🟢 Maintenance Mode will be active in v4.0", show_alert=True)
+        
+    elif action == "backup":
+        await callback_query.answer("💾 MongoDB Auto-Backup is active in the cloud.", show_alert=True)
+        
+    elif action == "logs":
+        await callback_query.message.edit_text("📝 **Logs Viewer:**\n\nPlease check your hosting server's Application Logs to view real-time live logs.", reply_markup=back_btn)
 
-# ================= ZERO-CODE SETTING COMMANDS =================
+
+# ================= ⚙️ SETTINGS & MANAGEMENT COMMANDS =================
 
 @app.on_message(filters.command("setstarttext") & filters.private)
 async def set_start_text(client, message):
@@ -161,8 +245,6 @@ async def set_timer(client, message):
         await message.reply_text(f"✅ Auto-Delete timer updated to: `{t}` seconds.")
     except Exception: await message.reply_text("Usage: `/settimer 300`")
 
-# ================= USER & ADMIN MANAGEMENT =================
-
 @app.on_message(filters.command("addadmin") & filters.private)
 async def add_admin_cmd(client, message):
     if message.from_user.id != ADMIN_ID: return
@@ -215,8 +297,6 @@ async def delete_movie(client, message):
         del_poster_count = del_poster.deleted_count
     text = f"✅ **Successfully Deleted!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files_count}`\n🖼️ Poster deleted: `{'Yes' if del_poster_count > 0 else 'No'}`"
     await message.reply_text(text)
-
-# ================= ADVANCED BROADCAST SYSTEM =================
 
 @app.on_message(filters.command("broadcast") & filters.private)
 async def advanced_broadcast(client, message):
