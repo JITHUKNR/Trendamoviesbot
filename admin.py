@@ -1,5 +1,6 @@
 import asyncio
 import re
+import logging
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -8,6 +9,10 @@ from bot import (
     app, ADMIN_ID, is_admin, get_fsub_config, get_delete_time,
     users_col, movies_col, posters_col, settings_col, admins_col, searches_col
 )
+
+# ലോഗിംഗ് സജ്ജീകരിക്കുന്നു (Error ട്രാക്ക് ചെയ്യാൻ)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ================= ULTRA PREMIUM ADMIN DASHBOARD (ROSE STYLE) =================
 
@@ -231,11 +236,15 @@ async def admin_actions(client, callback_query):
         await callback_query.message.edit_text("⚠️ **Clear entirely all movies and posters?**\nThis action cannot be undone!", reply_markup=InlineKeyboardMarkup(buttons))
 
     elif action == "confclear":
-        if movies_col is not None:
-            await movies_col.delete_many({})
-        if posters_col is not None:
-            await posters_col.delete_many({})
-        await callback_query.message.edit_text("✅ Databases cleared successfully!", reply_markup=back_btn)
+        try:
+            if movies_col is not None:
+                await movies_col.delete_many({})
+            if posters_col is not None:
+                await posters_col.delete_many({})
+            await callback_query.message.edit_text("✅ Databases cleared successfully!", reply_markup=back_btn)
+        except Exception as e:
+            logger.error(f"Error clearing database: {e}")
+            await callback_query.message.edit_text("❌ Failed to clear database. Check logs.", reply_markup=back_btn)
 
 # ================= ADMIN COMMANDS =================
 
@@ -315,7 +324,8 @@ async def set_channel_id(client, message):
         if settings_col is not None:
             await settings_col.update_one({"_id": "fsub_config"}, {"$set": {"channel_id": new_id}}, upsert=True)
         await message.reply_text(f"✅ FSub Channel ID set to: `{new_id}`")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error setting channel ID: {e}")
         await message.reply_text("Usage: `/setchannel -100xxxxxxxx`")
 
 @app.on_message(filters.command("setlink") & filters.private)
@@ -327,7 +337,8 @@ async def set_channel_link(client, message):
         if settings_col is not None:
             await settings_col.update_one({"_id": "fsub_config"}, {"$set": {"link": new_link}}, upsert=True)
         await message.reply_text(f"✅ FSub Link set to:\n{new_link}")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error setting channel link: {e}")
         await message.reply_text("Usage: `/setlink LINK`")
 
 @app.on_message(filters.command("settimer") & filters.private)
@@ -339,7 +350,8 @@ async def set_timer(client, message):
         if settings_col is not None:
             await settings_col.update_one({"_id": "timer_config"}, {"$set": {"time": t}}, upsert=True)
         await message.reply_text(f"✅ Auto-Delete timer updated to: `{t}` seconds.")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error setting timer: {e}")
         await message.reply_text("Usage: `/settimer 300`")
 
 @app.on_message(filters.command("addadmin") & filters.private)
@@ -351,7 +363,8 @@ async def add_admin_cmd(client, message):
         if admins_col is not None:
             await admins_col.update_one({"user_id": uid}, {"$set": {"user_id": uid}}, upsert=True)
         await message.reply_text(f"✅ User `{uid}` added as Admin.")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error adding admin: {e}")
         await message.reply_text("Usage: `/addadmin USER_ID`")
 
 @app.on_message(filters.command("removeadmin") & filters.private)
@@ -363,7 +376,8 @@ async def remove_admin_cmd(client, message):
         if admins_col is not None:
             await admins_col.delete_one({"user_id": uid})
         await message.reply_text(f"❌ User `{uid}` removed from Admin.")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error removing admin: {e}")
         await message.reply_text("Usage: `/removeadmin USER_ID`")
 
 @app.on_message(filters.command("ban") & filters.private)
@@ -375,7 +389,8 @@ async def ban_user(client, message):
         if users_col is not None:
             await users_col.update_one({"user_id": target_id}, {"$set": {"is_banned": 1}}, upsert=True)
         await message.reply_text(f"✅ User `{target_id}` BANNED.")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error banning user: {e}")
         await message.reply_text("Usage: `/ban UserID`")
 
 @app.on_message(filters.command("unban") & filters.private)
@@ -387,7 +402,8 @@ async def unban_user(client, message):
         if users_col is not None:
             await users_col.update_one({"user_id": target_id}, {"$set": {"is_banned": 0}}, upsert=True)
         await message.reply_text(f"✅ User `{target_id}` UNBANNED.")
-    except Exception: 
+    except Exception as e:
+        logger.error(f"Error unbanning user: {e}")
         await message.reply_text("Usage: `/unban UserID`")
 
 @app.on_message(filters.command("delmovie") & filters.private)
@@ -398,16 +414,22 @@ async def delete_movie(client, message):
         return await message.reply_text("⚠️ **Usage:** `/delmovie Movie Name`")
         
     query = message.text.split(" ", 1)[1].strip().lower()
-    search_pattern = query.replace(" ", ".*")
+    
+    # Regex സുരക്ഷിതമാക്കുന്നു (ReDoS ഒഴിവാക്കാൻ)
+    search_pattern = re.escape(query).replace(r"\ ", ".*")
     
     del_files_count = 0
     del_poster_count = 0
-    if movies_col is not None:
-        del_files = await movies_col.delete_many({"file_name": {"$regex": search_pattern, "$options": "i"}})
-        del_files_count = del_files.deleted_count
-    if posters_col is not None:
-        del_poster = await posters_col.delete_one({"title": query})
-        del_poster_count = del_poster.deleted_count
+    try:
+        if movies_col is not None:
+            del_files = await movies_col.delete_many({"file_name": {"$regex": search_pattern, "$options": "i"}})
+            del_files_count = del_files.deleted_count
+        if posters_col is not None:
+            del_poster = await posters_col.delete_one({"title": query})
+            del_poster_count = del_poster.deleted_count
+    except Exception as e:
+        logger.error(f"Error deleting movie: {e}")
+        return await message.reply_text("❌ Error occurred while deleting. Check logs.")
     
     text = f"✅ **Successfully Deleted!**\n\n🎬 Movie: `{query.title()}`\n📁 Files deleted: `{del_files_count}`\n🖼️ Poster deleted: `{'Yes' if del_poster_count > 0 else 'No'}`"
     await message.reply_text(text)
@@ -445,6 +467,10 @@ async def advanced_broadcast(client, message):
         clean_text = clean_text.replace(match.group(0), "")
     
     clean_text = clean_text.strip()
+    
+    # Caption ബഗ് പരിഹരിച്ചിരിക്കുന്നു
+    final_caption = clean_text if clean_text else (reply_msg.caption or "")
+    final_text = clean_text if clean_text else (reply_msg.text or "")
     markup = InlineKeyboardMarkup(buttons) if buttons else reply_msg.reply_markup
 
     success, failed = 0, 0
@@ -452,12 +478,13 @@ async def advanced_broadcast(client, message):
         async for user in users_col.find({}):
             try:
                 if reply_msg.media:
-                    await reply_msg.copy(chat_id=user["user_id"], caption=clean_text if buttons else reply_msg.caption, reply_markup=markup)
+                    await reply_msg.copy(chat_id=user["user_id"], caption=final_caption, reply_markup=markup)
                 else:
-                    await client.send_message(chat_id=user["user_id"], text=clean_text if buttons else reply_msg.text, reply_markup=markup)
+                    await client.send_message(chat_id=user["user_id"], text=final_text, reply_markup=markup)
                 success += 1
                 await asyncio.sleep(0.05) 
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Broadcast failed for user {user['user_id']}: {e}")
                 failed += 1
                 
         await status_msg.edit_text(f"✅ **Broadcast Completed!**\n\n💚 Successful: {success}\n❤️ Failed/Blocked: {failed}")
