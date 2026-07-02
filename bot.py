@@ -593,6 +593,45 @@ async def verify_joined(client, callback_query):
                 await callback_query.answer("✅ Thank you for joining! Now you can search for movies.", show_alert=True)
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
+# ================= 📢 പോസ്റ്റ് ടു ചാനൽ ഫീച്ചർ =================
+@app.on_message(filters.command("post") & filters.private)
+async def post_to_channel(client, message):
+    if not await is_admin(message.from_user.id): return
+    
+    if len(message.command) < 2 or not message.reply_to_message:
+        return await message.reply_text(
+            "⚠️ **എങ്ങനെ ഉപയോഗിക്കാം:**\n\n"
+            "നിങ്ങൾക്ക് ചാനലിലേക്ക് അയക്കേണ്ട പോസ്റ്ററിനോ മെസ്സേജിനോ റിപ്ലൈ ആയി ഇങ്ങനെ ടൈപ്പ് ചെയ്യുക:\n"
+            "`/post @yourchannelusername`\nഅല്ലെങ്കിൽ\n`/post -100xxxxxxx`"
+        )
+        
+    target_channel = message.command[1]
+    status_msg = await message.reply_text("⏳ പോസ്റ്റ് ചെയ്യുന്നു...")
+    
+    reply_msg = message.reply_to_message
+    raw_text = reply_msg.text or reply_msg.caption or ""
+    clean_text = raw_text
+    buttons = []
+    
+    matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
+    for match in matches:
+        btn_text = match.group(1).strip()
+        btn_url = match.group(2).strip()
+        buttons.append([InlineKeyboardButton(btn_text, url=btn_url)])
+        clean_text = clean_text.replace(match.group(0), "")
+    
+    clean_text = clean_text.strip()
+    markup = InlineKeyboardMarkup(buttons) if buttons else reply_msg.reply_markup
+
+    try:
+        if reply_msg.media:
+            await reply_msg.copy(chat_id=target_channel, caption=clean_text if buttons else reply_msg.caption, reply_markup=markup)
+        else:
+            await client.send_message(chat_id=target_channel, text=clean_text if buttons else reply_msg.text, reply_markup=markup)
+            
+        await status_msg.edit_text(f"✅ **വിജയകരമായി {target_channel} ലേക്ക് പോസ്റ്റ് ചെയ്തു!**")
+    except Exception as e:
+        await status_msg.edit_text(f"❌ **പോസ്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല.**\n\nകാരണം: ബോട്ട് ആ ചാനലിൽ അഡ്മിൻ ആണോ എന്ന് ഉറപ്പുവരുത്തുക.\nError: `{e}`")
 
 # ================= 🚀 FINAL STARTUP =================
 if __name__ == "__main__":
