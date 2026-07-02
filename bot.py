@@ -1,7 +1,6 @@
 import asyncio
-asyncio.set_event_loop(asyncio.new_event_loop())
-
 import os
+import sys
 import uuid
 import certifi
 import re
@@ -22,17 +21,15 @@ def home():
 def run_server():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port)
-
 # ------------------
 
 # Configuration
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 0)) # Super Admin
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 MONGO_URI = os.environ.get("MONGO_URI", "") 
 
-# Default Configurations
 DEFAULT_FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", -1003903891234)) 
 DEFAULT_FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/+57MfRxJ_0QdiZjRl")
 DEFAULT_DELETE_TIME = 300 
@@ -208,6 +205,7 @@ async def search_file(client, message):
     else:
         await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
+
 # ================= SEND FILE, THUMBNAIL & WATCH ONLINE =================
 
 async def delete_after_delay(message, delay):
@@ -244,7 +242,6 @@ async def send_file(client, callback_query):
             reply_markup=reply_markup
         )
         
-        # --- FIXED THUMBNAIL LOGIC ---
         if thumb_file_id:
             try:
                 await client.edit_message_media(
@@ -258,7 +255,7 @@ async def send_file(client, callback_query):
                     reply_markup=reply_markup
                 )
             except Exception as e:
-                print(f"Thumb Error: {e}")
+                pass
         
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
@@ -289,14 +286,19 @@ async def verify_joined(client, callback_query):
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
-# ================= SERVER & BOT STARTUP =================
-if __name__ == "__main__":
-    # സെർവർ മെയിൻ റണ്ണിൽ മാത്രം സ്റ്റാർട്ട് ആകാൻ
-    Thread(target=run_server).start()
-    
+# ================= STARTUP LOGIC =================
+def start_bot():
+    Thread(target=run_server, daemon=True).start()
     print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
     
-    # അഡ്മിൻ ഫയലിലെ കോഡുകൾ ഇവിടെ ബന്ധിപ്പിക്കുന്നു
-    import admin
-    
+    # അഡ്മിൻ ഫയൽ ഇവിടെ കണക്റ്റ് ചെയ്യുന്നു (ലൂപ്പ് എറർ വരാതിരിക്കാൻ)
+    try:
+        import admin
+    except ImportError:
+        print("⚠️ admin.py not found!", flush=True)
+        
     app.run()
+
+if __name__ == "__main__":
+    import bot
+    bot.start_bot()
