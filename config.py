@@ -2,7 +2,7 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 import certifi
 
-# Bot Configs (just variables, NO Client instance!)
+# Bot Configs
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -16,9 +16,9 @@ if MONGO_URI:
     movies_col = db["movies"]
     users_col = db["users"]
     searches_col = db["searches"]
-    posters_col = db["posters"]  
-    settings_col = db["settings"] 
-    admins_col = db["admins"] 
+    posters_col = db["posters"]
+    settings_col = db["settings"]
+    admins_col = db["admins"]
 else:
     print("⚠️ MONGO_URI missing!")
     movies_col = users_col = searches_col = posters_col = settings_col = admins_col = None
