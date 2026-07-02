@@ -1,8 +1,12 @@
-import os
-# --- ഈ വരിയാണ് ഏറ്റവും പ്രധാനം! ഇത് Pyrogram ലൂപ്പ് എറർ പൂർണ്ണമായും ഒഴിവാക്കും ---
-os.environ["PYROGRAM_DISABLE_SYNC"] = "1" 
-
+# ================= ⚠️ CRITICAL FIX (DO NOT MOVE THIS) =================
 import asyncio
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+# ======================================================================
+
+import os
 from threading import Thread
 import certifi
 import uuid
@@ -16,7 +20,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedi
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import UserNotParticipant
 
-# ================= 🌐 വെബ് സെർവർ (Render പോർട്ട് എറർ ഒഴിവാക്കാൻ) =================
+# ================= 🌐 WEB SERVER (For Render Port Binding) =================
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -27,7 +31,7 @@ def run_server():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ================= ⚙️ കോൺഫിഗറേഷൻ =================
+# ================= ⚙️ CONFIGURATION =================
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -39,7 +43,7 @@ DEFAULT_FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/+57MfRxJ
 DEFAULT_DELETE_TIME = 300
 DEFAULT_START_PIC = "https://telegra.ph/file/0c320d759dc23bcbbbb9b.jpg"
 
-# ================= 🗄 ഡാറ്റാബേസ് സെറ്റപ്പ് (MongoDB) =================
+# ================= 🗄 DATABASE SETUP =================
 if MONGO_URI:
     mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
     db = mongo_client["trenda_movies"]
@@ -53,11 +57,11 @@ else:
     print("⚠️ MONGO_URI missing!")
     movies_col = users_col = searches_col = posters_col = settings_col = admins_col = None
 
-# ================= 🤖 ബോട്ട് ആരംഭിക്കുന്നു =================
+# ================= 🤖 BOT INSTANCE =================
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 
-# ================= 🛠 ഡാറ്റാബേസ് ഫങ്ക്ഷനുകൾ =================
+# ================= 🛠 DATABASE HELPERS =================
 async def is_admin(user_id):
     if user_id == ADMIN_ID: return True
     if admins_col is not None:
@@ -131,7 +135,7 @@ async def check_user_access(client, message):
         except Exception: return True
     return True
 
-# ================= 🚀 യൂസർ കമാൻഡുകൾ (Start & Search) =================
+# ================= 🚀 MAIN USER COMMANDS =================
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     if not await add_user(message.from_user.id):
@@ -223,7 +227,7 @@ async def search_file(client, message):
         await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
 
-# ================= 📨 കോൾബാക്ക് ഫങ്ക്ഷനുകൾ (Send, Req, Check) =================
+# ================= 📨 CALLBACK HANDLERS (SEND, REQ, CHECK) =================
 async def delete_after_delay(message, delay):
     await asyncio.sleep(delay)
     try:
@@ -304,7 +308,7 @@ async def verify_joined(client, callback_query):
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
 
-# ================= 👑 പ്രീമിയം അഡ്മിൻ പാനൽ (Rose Bot Style) =================
+# ================= 👑 ROSE BOT STYLE ADMIN DASHBOARD =================
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
     if not await is_admin(message.from_user.id): return
@@ -437,7 +441,7 @@ async def admin_actions(client, callback_query):
         await callback_query.message.edit_text("📝 **Logs:** Check Render Application Logs.", reply_markup=back_btn)
 
 
-# ================= ⚙️ അഡ്മിൻ സെറ്റിംഗ്സ് കമാൻഡുകൾ =================
+# ================= ⚙️ SETTINGS COMMANDS =================
 @app.on_message(filters.command("setstarttext") & filters.private)
 async def set_start_text(client, message):
     if not await is_admin(message.from_user.id): return
@@ -600,7 +604,7 @@ async def advanced_broadcast(client, message):
         await status_msg.edit_text("❌ Database not initialized.")
 
 
-# ================= 🚀 ഫൈനൽ സ്റ്റാർട്ടപ്പ് =================
+# ================= 🚀 FINAL STARTUP =================
 if __name__ == "__main__":
     Thread(target=run_server, daemon=True).start()
     print("✅ Web Server & Bot Engine Started Successfully!", flush=True)
