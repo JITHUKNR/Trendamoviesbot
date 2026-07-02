@@ -1,5 +1,4 @@
 import os
-from pyrogram import Client
 from motor.motor_asyncio import AsyncIOMotorClient
 import certifi
 
@@ -9,9 +8,6 @@ API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 MONGO_URI = os.environ.get("MONGO_URI", "")
-
-# App Instance
-app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # MongoDB Setup
 if MONGO_URI:
