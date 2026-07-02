@@ -1,4 +1,7 @@
 import os
+# --- ഈ വരിയാണ് ഏറ്റവും പ്രധാനം! ഇത് Pyrogram ലൂപ്പ് എറർ പൂർണ്ണമായും ഒഴിവാക്കും ---
+os.environ["PYROGRAM_DISABLE_SYNC"] = "1" 
+
 import asyncio
 from threading import Thread
 import certifi
@@ -13,7 +16,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedi
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import UserNotParticipant
 
-# ================= 🌐 WEB SERVER (For Render Port Binding) =================
+# ================= 🌐 വെബ് സെർവർ (Render പോർട്ട് എറർ ഒഴിവാക്കാൻ) =================
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -24,7 +27,7 @@ def run_server():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ================= ⚙️ CONFIGURATION =================
+# ================= ⚙️ കോൺഫിഗറേഷൻ =================
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -36,7 +39,7 @@ DEFAULT_FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/+57MfRxJ
 DEFAULT_DELETE_TIME = 300
 DEFAULT_START_PIC = "https://telegra.ph/file/0c320d759dc23bcbbbb9b.jpg"
 
-# ================= 🗄 DATABASE SETUP =================
+# ================= 🗄 ഡാറ്റാബേസ് സെറ്റപ്പ് (MongoDB) =================
 if MONGO_URI:
     mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
     db = mongo_client["trenda_movies"]
@@ -50,11 +53,11 @@ else:
     print("⚠️ MONGO_URI missing!")
     movies_col = users_col = searches_col = posters_col = settings_col = admins_col = None
 
-# ================= 🤖 BOT INSTANCE =================
+# ================= 🤖 ബോട്ട് ആരംഭിക്കുന്നു =================
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 
-# ================= 🛠 DATABASE HELPERS =================
+# ================= 🛠 ഡാറ്റാബേസ് ഫങ്ക്ഷനുകൾ =================
 async def is_admin(user_id):
     if user_id == ADMIN_ID: return True
     if admins_col is not None:
@@ -128,7 +131,7 @@ async def check_user_access(client, message):
         except Exception: return True
     return True
 
-# ================= 🚀 MAIN USER COMMANDS =================
+# ================= 🚀 യൂസർ കമാൻഡുകൾ (Start & Search) =================
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     if not await add_user(message.from_user.id):
@@ -220,7 +223,7 @@ async def search_file(client, message):
         await message.reply_text("🍿 **Here are your search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
 
-# ================= 📨 CALLBACK HANDLERS (SEND, REQ, CHECK) =================
+# ================= 📨 കോൾബാക്ക് ഫങ്ക്ഷനുകൾ (Send, Req, Check) =================
 async def delete_after_delay(message, delay):
     await asyncio.sleep(delay)
     try:
@@ -301,7 +304,7 @@ async def verify_joined(client, callback_query):
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
 
-# ================= 👑 ROSE BOT STYLE ADMIN DASHBOARD =================
+# ================= 👑 പ്രീമിയം അഡ്മിൻ പാനൽ (Rose Bot Style) =================
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
     if not await is_admin(message.from_user.id): return
@@ -434,7 +437,7 @@ async def admin_actions(client, callback_query):
         await callback_query.message.edit_text("📝 **Logs:** Check Render Application Logs.", reply_markup=back_btn)
 
 
-# ================= ⚙️ SETTINGS COMMANDS =================
+# ================= ⚙️ അഡ്മിൻ സെറ്റിംഗ്സ് കമാൻഡുകൾ =================
 @app.on_message(filters.command("setstarttext") & filters.private)
 async def set_start_text(client, message):
     if not await is_admin(message.from_user.id): return
@@ -597,7 +600,7 @@ async def advanced_broadcast(client, message):
         await status_msg.edit_text("❌ Database not initialized.")
 
 
-# ================= 🚀 FINAL STARTUP =================
+# ================= 🚀 ഫൈനൽ സ്റ്റാർട്ടപ്പ് =================
 if __name__ == "__main__":
     Thread(target=run_server, daemon=True).start()
     print("✅ Web Server & Bot Engine Started Successfully!", flush=True)
