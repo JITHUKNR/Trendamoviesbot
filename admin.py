@@ -15,7 +15,6 @@ from bot import (
 async def admin_panel(client, message):
     if not await is_admin(message.from_user.id): return
     
-    # Rose Bot Style Home Menu
     buttons = [
         [InlineKeyboardButton("📊 Live Statistics", callback_data="admin_stats"), InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot")],
         [InlineKeyboardButton("🎬 Movie Management", callback_data="menu_movies"), InlineKeyboardButton("👥 User Management", callback_data="menu_users")],
@@ -36,7 +35,6 @@ async def admin_panel(client, message):
 """
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-# ================= 🔄 DYNAMIC MENU NAVIGATOR =================
 
 @app.on_callback_query(filters.regex(r"^menu_") | filters.regex(r"^close_panel") | filters.regex(r"^admin_home$"))
 async def admin_menus(client, callback_query):
@@ -100,8 +98,6 @@ async def admin_menus(client, callback_query):
         await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nSystem level configurations and server management.", reply_markup=InlineKeyboardMarkup(buttons))
 
 
-# ================= ⚡ ACTION HANDLERS =================
-
 @app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear|webinfo|roles|comingsoon|restart|maint|backup|logs)$"))
 async def admin_actions(client, callback_query):
     if not await is_admin(callback_query.from_user.id): return
@@ -161,7 +157,7 @@ async def admin_actions(client, callback_query):
         
     elif action == "restart":
         await callback_query.message.edit_text("🔄 **Restarting Bot...**\nPlease wait 10 seconds.")
-        os.system("kill 1") # Server (Render/Railway) will auto-restart the script
+        os.system("kill 1") 
         sys.exit(1)
         
     elif action == "maint":
