@@ -1,4 +1,5 @@
 import os
+os.environ["PYROGRAM_DISABLE_SYNC"] = "1"  # ⚠️ IMPORTANT! Disable sync wrapper
 import asyncio
 from flask import Flask
 from threading import Thread
