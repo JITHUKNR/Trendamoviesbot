@@ -4,6 +4,7 @@ from threading import Thread
 import certifi
 import uuid
 import re
+import time
 from urllib.parse import quote
 from flask import Flask
 
@@ -11,6 +12,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaDocument
 from pyrogram.errors import UserNotParticipant
+
+BOT_START_TIME = time.time()
 
 # ================= 🌐 WEB SERVER (For Render) =================
 web_app = Flask(__name__)
@@ -244,7 +247,8 @@ async def admin_menus(client, callback_query):
             [InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart"), InlineKeyboardButton("📝 Logs Viewer", callback_data="admin_logs")],
             [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
         ]
-        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nControl maintenance and system power:", reply_markup=InlineKeyboardMarkup(buttons))
+        text = "🛠 **ADVANCED TOOLS & UTILITY**\n\n`/ping` - Check server speed\n`/uptime` - Bot active time\n\nControl maintenance and system power below:"
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear|webinfo|roles|restart|backup|logs|maint)$"))
 async def admin_actions(client, callback_query):
@@ -266,7 +270,8 @@ async def admin_actions(client, callback_query):
             [InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart"), InlineKeyboardButton("📝 Logs Viewer", callback_data="admin_logs")],
             [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
         ]
-        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nControl maintenance and system power:", reply_markup=InlineKeyboardMarkup(buttons))
+        text = "🛠 **ADVANCED TOOLS & UTILITY**\n\n`/ping` - Check server speed\n`/uptime` - Bot active time\n\nControl maintenance and system power below:"
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     elif action == "stats":
         u = await users_col.count_documents({}) if users_col is not None else 0
@@ -484,6 +489,23 @@ async def advanced_broadcast(client, message):
         await status_msg.edit_text(f"✅ **Broadcast Completed!**\n\n💚 Success: {success}\n❤️ Failed: {failed}")
     else:
         await status_msg.edit_text("❌ Database not initialized.")
+
+# ================= 🚀 UTILITY COMMANDS =================
+@app.on_message(filters.command("ping") & filters.private)
+async def ping_cmd(client, message):
+    if not await is_admin(message.from_user.id): return
+    start_t = time.time()
+    rm = await message.reply_text("Pinging server...")
+    end_t = time.time()
+    ping_time = round((end_t - start_t) * 1000, 3)
+    await rm.edit_text(f"🏓 **Pong!**\n\n⚡ Server Speed: `{ping_time} ms`")
+
+@app.on_message(filters.command("uptime") & filters.private)
+async def uptime_cmd(client, message):
+    if not await is_admin(message.from_user.id): return
+    uptime_sec = int(time.time() - BOT_START_TIME)
+    uptime_str = f"{uptime_sec // 3600}h { (uptime_sec % 3600) // 60 }m {uptime_sec % 60}s"
+    await message.reply_text(f"🤖 **Bot Uptime:**\n`{uptime_str}`\n\n*(Time since last restart/deploy)*")
 
 # ================= 📢 POST TO CHANNEL FEATURE =================
 @app.on_message(filters.command("post") & filters.private)
