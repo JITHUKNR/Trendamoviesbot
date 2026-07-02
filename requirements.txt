@@ -1,6 +1,6 @@
 pyrofork
 TgCrypto
-Flask==2.3.2
-motor==3.3.1
-pymongo[srv]==4.5.0
+Flask
+motor
+pymongo[srv]
 certifi
