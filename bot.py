@@ -1,6 +1,4 @@
-import asyncio
 import os
-import sys
 import uuid
 import certifi
 import re
@@ -286,16 +284,17 @@ async def verify_joined(client, callback_query):
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
-# ================= STARTUP LOGIC =================
-def start_bot():
+# ================= SERVER & BOT STARTUP =================
+if __name__ == "__main__":
     Thread(target=run_server, daemon=True).start()
-    print("Bot started successfully with ULTRA PREMIUM Features & Watch Online!", flush=True)
     
-    # അഡ്മിൻ ഫയൽ ഇവിടെ കണക്റ്റ് ചെയ്യുന്നു (ലൂപ്പ് എറർ വരാതിരിക്കാൻ)
+    print("Bot started successfully!", flush=True)
+    
+    # admin.py ലോഡ് ചെയ്യുന്നു
     try:
         import admin
     except ImportError:
-        print("⚠️ admin.py not found!", flush=True)
+        pass
         
     app.run()
 
