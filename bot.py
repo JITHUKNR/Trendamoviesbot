@@ -186,7 +186,7 @@ async def admin_panel(client, message):
         [InlineKeyboardButton("🛠 Advanced Tools", callback_data="menu_adv")],
         [InlineKeyboardButton("❌ Close Dashboard", callback_data="close_panel")]
     ]
-    text = "👑 **Trenda Bot Control Panel** 👑\n\nSystem Status: `Online 🟢`\nVersion: `v4.0 (Pro)`\nServer: `Render (Web)`\n\n👋 Welcome Master! Select a module below to configure your bot:"
+    text = "👑 **Trenda Bot Control Panel** 👑\n\nSystem Status: `Online 🟢`\nVersion: `v4.1 (Pro)`\nServer: `Render (Web)`\n\n👋 Welcome Master! Select a module below to configure your bot:"
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^menu_") | filters.regex(r"^close_panel") | filters.regex(r"^admin_home$"))
@@ -239,7 +239,10 @@ async def admin_menus(client, callback_query):
         await callback_query.message.edit_text("🗑 **DATABASE MANAGER**", reply_markup=InlineKeyboardMarkup(buttons))
 
     elif data == "menu_adv":
-        maint = await settings_col.find_one({"_id": "maintenance_mode"}) if settings_col else None
+        maint = None
+        if settings_col is not None:
+            maint = await settings_col.find_one({"_id": "maintenance_mode"})
+            
         m_status = "🟢 ON" if maint and maint.get("status") else "🔴 OFF"
         
         buttons = [
@@ -257,10 +260,15 @@ async def admin_actions(client, callback_query):
     back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_home")]])
 
     if action == "maint":
-        maint = await settings_col.find_one({"_id": "maintenance_mode"}) if settings_col else None
+        maint = None
+        if settings_col is not None:
+            maint = await settings_col.find_one({"_id": "maintenance_mode"})
+            
         current_status = maint.get("status") if maint else False
         new_status = not current_status
-        await settings_col.update_one({"_id": "maintenance_mode"}, {"$set": {"status": new_status}}, upsert=True)
+        
+        if settings_col is not None:
+            await settings_col.update_one({"_id": "maintenance_mode"}, {"$set": {"status": new_status}}, upsert=True)
         
         status_text = "🟢 ON" if new_status else "🔴 OFF"
         await callback_query.answer(f"Maintenance Mode is now {status_text}", show_alert=True)
@@ -327,6 +335,23 @@ async def admin_actions(client, callback_query):
         
     elif action == "logs":
         await callback_query.message.edit_text("📝 **Logs:** Check Render Application Logs.", reply_markup=back_btn)
+
+# ================= 🚀 UTILITY COMMANDS =================
+@app.on_message(filters.command("ping") & filters.private)
+async def ping_cmd(client, message):
+    if not await is_admin(message.from_user.id): return
+    start_t = time.time()
+    rm = await message.reply_text("Pinging server...")
+    end_t = time.time()
+    ping_time = round((end_t - start_t) * 1000, 3)
+    await rm.edit_text(f"🏓 **Pong!**\n\n⚡ Server Speed: `{ping_time} ms`")
+
+@app.on_message(filters.command("uptime") & filters.private)
+async def uptime_cmd(client, message):
+    if not await is_admin(message.from_user.id): return
+    uptime_sec = int(time.time() - BOT_START_TIME)
+    uptime_str = f"{uptime_sec // 3600}h { (uptime_sec % 3600) // 60 }m {uptime_sec % 60}s"
+    await message.reply_text(f"🤖 **Bot Uptime:**\n`{uptime_str}`\n\n*(Time since last restart/deploy)*")
 
 # ================= ⚙️ SETTINGS COMMANDS =================
 @app.on_message(filters.command("setstarttext") & filters.private)
@@ -489,23 +514,6 @@ async def advanced_broadcast(client, message):
         await status_msg.edit_text(f"✅ **Broadcast Completed!**\n\n💚 Success: {success}\n❤️ Failed: {failed}")
     else:
         await status_msg.edit_text("❌ Database not initialized.")
-
-# ================= 🚀 UTILITY COMMANDS =================
-@app.on_message(filters.command("ping") & filters.private)
-async def ping_cmd(client, message):
-    if not await is_admin(message.from_user.id): return
-    start_t = time.time()
-    rm = await message.reply_text("Pinging server...")
-    end_t = time.time()
-    ping_time = round((end_t - start_t) * 1000, 3)
-    await rm.edit_text(f"🏓 **Pong!**\n\n⚡ Server Speed: `{ping_time} ms`")
-
-@app.on_message(filters.command("uptime") & filters.private)
-async def uptime_cmd(client, message):
-    if not await is_admin(message.from_user.id): return
-    uptime_sec = int(time.time() - BOT_START_TIME)
-    uptime_str = f"{uptime_sec // 3600}h { (uptime_sec % 3600) // 60 }m {uptime_sec % 60}s"
-    await message.reply_text(f"🤖 **Bot Uptime:**\n`{uptime_str}`\n\n*(Time since last restart/deploy)*")
 
 # ================= 📢 POST TO CHANNEL FEATURE =================
 @app.on_message(filters.command("post") & filters.private)
