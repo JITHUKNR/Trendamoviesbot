@@ -20,14 +20,14 @@ web_app = Flask(__name__)
 def home():
     return "Trenda Bot is Running!"
 
-# --- CONFIG (inlined to avoid config.py import issue) ---
+# --- CONFIG ---
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 MONGO_URI = os.environ.get("MONGO_URI", "")
 
-# --- DATABASE SETUP (done here to avoid top-level Client import) ---
+# --- DATABASE SETUP ---
 mongo_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
 db = mongo_client["trenda_movies"]
 movies_col = db["movies"]
@@ -43,7 +43,7 @@ DEFAULT_FORCE_SUB_LINK = os.environ.get("FORCE_SUB_LINK", "https://t.me/+57MfRxJ
 DEFAULT_DELETE_TIME = 300
 DEFAULT_START_PIC = "https://telegra.ph/file/0c320d759dc23bcbbbb9b.jpg"
 
-# --- CLIENT INIT (delayed until main) ---
+# --- CLIENT INIT ---
 bot = None
 
 def get_bot():
@@ -76,7 +76,7 @@ async def get_delete_time():
 
 async def get_start_config():
     config = await settings_col.find_one({"_id": "start_config"})
-    default_text = "✨ **Welcome to Trenda Cinema Bot** ✨\n\n👤 **YOUR PROFILE:**\n┣ 📝 **Name:** {name}\n┣ 🆔 **User ID:** `{id}`\n┗ 🔗 **Username:** {username}\n\n🍿 *Just type the name of the movie you want to download!*"
+    default_text = "✨ Welcome to Trenda Cinema Bot ✨\n\n👤 YOUR PROFILE:\n┣ 📝 Name: {name}\n┣ 🆔 User ID: `{id}`\n┗ 🔗 Username: {username}\n\n🍿 Just type the name of the movie you want to download!"
     if config:
         return config.get("text", default_text), config.get("pic", DEFAULT_START_PIC)
     return default_text, DEFAULT_START_PIC
@@ -97,10 +97,10 @@ async def check_user_access(client, message):
     try:
         user = await users_col.find_one({"user_id": user_id})
         if user and user.get("is_banned") == 1:
-            await message.reply_text("⛔ **You are banned from using this bot.**")
+            await message.reply_text("⛔ You are banned from using this bot.")
             return False
     except Exception: pass
-
+    
     fsub_channel, fsub_link = await get_fsub_config()
     if fsub_channel != 0:
         try:
@@ -127,18 +127,17 @@ async def check_user_access(client, message):
 @get_bot().on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     if not await add_user(message.from_user.id):
-        return await message.reply_text("⚠️ **Database is not connected yet!**")
-    
+        return await message.reply_text("⚠️ Database is not connected yet!")
     _fsub_link = await get_fsub_config()
     buttons = [
-        [InlineKeyboardButton("🔍 Search Movies", switch_inline_query_current_chat="")],
+        [InlineKeyboardButton("🔍 Search Movies", switch_inline_query_current_chat=" ")],
         [InlineKeyboardButton("📢 Updates Channel", url=_fsub_link[1])]
     ]
-    
+
     user = message.from_user
     u_username = f"@{user.username}" if user.username else "None"
     custom_text, custom_pic = await get_start_config()
-    
+
     photo = custom_pic
     if custom_pic == "user_dp" and user.photo:
         photo = user.photo.big_file_id
@@ -148,8 +147,8 @@ async def start_command(client, message):
     try:
         welcome_text = custom_text.format(name=user.first_name, id=user.id, username=u_username)
     except Exception:
-        welcome_text = custom_text 
-    
+        welcome_text = custom_text  
+
     try:
         await message.reply_photo(photo=photo, caption=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception:
@@ -157,11 +156,11 @@ async def start_command(client, message):
 
 @get_bot().on_message(filters.photo & filters.channel)
 async def save_poster(client, message):
-    if message.caption and "🎬 Title :" in message.caption:
+    if message.caption and "🎬 Title : " in message.caption:
         try:
             lines = message.caption.split('\n')
-            title_line = [line for line in lines if "Title :" in line][0]
-            movie_title = title_line.split(":", 1)[1].strip().lower()
+            title_line = [line for line in lines if "Title : " in line][0]
+            movie_title = title_line.split(": ", 1)[1].strip().lower()
             await posters_col.update_one({"title": movie_title}, {"$set": {"file_id": message.photo.file_id, "caption": message.caption}}, upsert=True)
         except Exception: pass
 
@@ -170,7 +169,7 @@ async def save_file(client, message):
     file = message.document or message.video
     if file:
         f_name = getattr(file, "file_name", "Unknown_Movie")
-        short_id = uuid.uuid4().hex[:8] 
+        short_id = uuid.uuid4().hex[:8]
         try:
             await movies_col.update_one({"file_id": file.file_id}, {"$setOnInsert": {"file_name": f_name, "file_size": getattr(file, "file_size", 0), "short_id": short_id}}, upsert=True)
         except Exception: pass
@@ -180,14 +179,13 @@ async def search_file(client, message):
     if message.text.startswith("/"): return
     if not await add_user(message.from_user.id): return
     if not await check_user_access(client, message): return
-        
     query = message.text.strip()
     await searches_col.update_one({"_id": query.lower()}, {"$inc": {"count": 1}}, upsert=True)
-    
+
     search_pattern = query.replace(" ", ".*")
     cursor = movies_col.find({"file_name": {"$regex": search_pattern, "$options": "i"}}).limit(50)
     results = await cursor.to_list(length=50)
-    
+
     if not results:
         btn = [[InlineKeyboardButton("📩 Request Movie to Admin", callback_data=f"req_{query[:30]}")]]
         return await message.reply_text("🥲 **Sorry, this movie is not available.**", reply_markup=InlineKeyboardMarkup(btn))
@@ -222,7 +220,6 @@ async def send_file(client, callback_query):
     if not await check_user_access(client, callback_query): return
     short_id = callback_query.data.split("_")[1]
     result = await movies_col.find_one({"short_id": short_id})
-    
     if result:
         await callback_query.answer("Sending file... Please wait!", show_alert=False)
         del_time = await get_delete_time()
@@ -235,31 +232,12 @@ async def send_file(client, callback_query):
             watch_link = f"{base_url.rstrip('/')}/?s={search_query}"
             reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("💻 Watch Online", url=watch_link)]])
         
-        thumb_config = await settings_col.find_one({"_id": "thumb_config"})
-        thumb_file_id = thumb_config.get("file_id") if thumb_config else None
-        
         sent_msg = await client.send_cached_media(
             chat_id=callback_query.message.chat.id, 
             file_id=result["file_id"], 
             caption=f"🎥 **{result['file_name']}**\n\n⚠️ *This file will auto-delete in {del_mins} minutes.*",
             reply_markup=reply_markup
         )
-        
-        if thumb_file_id:
-            try:
-                await client.edit_message_media(
-                    chat_id=sent_msg.chat.id,
-                    message_id=sent_msg.id,
-                    media=InputMediaDocument(
-                        media=result["file_id"],
-                        thumb=thumb_file_id,
-                        caption=sent_msg.caption
-                    ),
-                    reply_markup=reply_markup
-                )
-            except Exception as e:
-                pass
-        
         asyncio.create_task(delete_after_delay(sent_msg, del_time))
     else:
         await callback_query.answer("File not found!", show_alert=True)
@@ -269,7 +247,7 @@ async def request_movie(client, callback_query):
     query = callback_query.data.split("_", 1)[1]
     user = callback_query.from_user
     try:
-        await client.send_message(ADMIN_ID, f"🆕 **New Movie Request!**\n\n🎬 Movie: `{query}`\n👤 User: {user.mention} (`{user.id}`)")
+        await client.send_message(ADMIN_ID, f"🆕 New Movie Request!\n\n🎬 Movie: `{query}`\n👤 User: {user.mention} (`{user.id}`)")
         await callback_query.answer("Your request has been sent to the admin!", show_alert=True)
     except Exception:
         await callback_query.answer("Failed to contact the admin.", show_alert=True)
@@ -289,16 +267,16 @@ async def verify_joined(client, callback_query):
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
 
+# --- IMPORT ADMIN MODULE TO REGISTER HANDLERS ---
+import admin
+
 # --- SERVER & BOT STARTUP ---
 def run_server():
     port = int(os.environ.get("PORT", 8080))
     web_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    # Start Flask in background
     Thread(target=run_server, daemon=True).start()
-    
-    # Initialize bot NOW (after event loop is ready)
     bot_instance = get_bot()
     print("✅ Bot instance created. Starting...", flush=True)
     bot_instance.run()
