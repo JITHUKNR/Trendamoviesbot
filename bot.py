@@ -52,7 +52,6 @@ else:
 # ================= 🤖 BOT INSTANCE =================
 app = Client("TrendaMoviesBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-
 # ================= 🛠 DATABASE HELPERS =================
 async def is_admin(user_id):
     if user_id == ADMIN_ID: return True
@@ -97,6 +96,16 @@ async def add_user(user_id):
 
 async def check_user_access(client, message):
     user_id = message.from_user.id
+    
+    # 1. Maintenance Mode Check
+    if not await is_admin(user_id):
+        if settings_col is not None:
+            maint = await settings_col.find_one({"_id": "maintenance_mode"})
+            if maint and maint.get("status") == True:
+                await message.reply_text("🛠 **Bot is currently under Maintenance!**\n\nWe are upgrading the system and adding new features. Please try again later. 🚀")
+                return False
+
+    # 2. Ban Check
     if users_col is not None:
         try:
             user = await users_col.find_one({"user_id": user_id})
@@ -105,6 +114,7 @@ async def check_user_access(client, message):
                 return False
         except Exception: pass
     
+    # 3. FSub Check
     fsub_channel, fsub_link = await get_fsub_config()
     if fsub_channel != 0:
         try:
@@ -133,6 +143,8 @@ async def start_command(client, message):
     if not await add_user(message.from_user.id):
         return await message.reply_text("⚠️ **Database is not connected yet!**")
     
+    if not await check_user_access(client, message): return
+
     _fsub_link = await get_fsub_config()
     buttons = [
         [InlineKeyboardButton("🔍 Search Movies", switch_inline_query_current_chat="")],
@@ -159,7 +171,6 @@ async def start_command(client, message):
     except Exception:
         await message.reply_text(text=welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
 
-
 # ================= 👑 ROSE BOT STYLE ADMIN DASHBOARD =================
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message):
@@ -172,7 +183,7 @@ async def admin_panel(client, message):
         [InlineKeyboardButton("🛠 Advanced Tools", callback_data="menu_adv")],
         [InlineKeyboardButton("❌ Close Dashboard", callback_data="close_panel")]
     ]
-    text = "👑 **Trenda Bot Control Panel** 👑\n\nSystem Status: `Online 🟢`\nVersion: `v3.0 (Rose UI)`\nServer: `Render (Web)`\n\n👋 Welcome Master! Select a module below to configure your bot:"
+    text = "👑 **Trenda Bot Control Panel** 👑\n\nSystem Status: `Online 🟢`\nVersion: `v4.0 (Pro)`\nServer: `Render (Web)`\n\n👋 Welcome Master! Select a module below to configure your bot:"
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"^menu_") | filters.regex(r"^close_panel") | filters.regex(r"^admin_home$"))
@@ -225,19 +236,39 @@ async def admin_menus(client, callback_query):
         await callback_query.message.edit_text("🗑 **DATABASE MANAGER**", reply_markup=InlineKeyboardMarkup(buttons))
 
     elif data == "menu_adv":
+        maint = await settings_col.find_one({"_id": "maintenance_mode"}) if settings_col else None
+        m_status = "🟢 ON" if maint and maint.get("status") else "🔴 OFF"
+        
         buttons = [
+            [InlineKeyboardButton(f"🛠 Maintenance Mode: {m_status}", callback_data="admin_maint")],
             [InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart"), InlineKeyboardButton("📝 Logs Viewer", callback_data="admin_logs")],
             [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
         ]
-        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**", reply_markup=InlineKeyboardMarkup(buttons))
+        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nControl maintenance and system power:", reply_markup=InlineKeyboardMarkup(buttons))
 
-@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear|webinfo|roles|restart|backup|logs)$"))
+@app.on_callback_query(filters.regex(r"^admin_(stats|trend|fsub|timer|baninfo|bcinfo|delinfo|setthumb|clear|confclear|webinfo|roles|restart|backup|logs|maint)$"))
 async def admin_actions(client, callback_query):
     if not await is_admin(callback_query.from_user.id): return
     action = callback_query.data.split("_")[1]
     back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_home")]])
 
-    if action == "stats":
+    if action == "maint":
+        maint = await settings_col.find_one({"_id": "maintenance_mode"}) if settings_col else None
+        current_status = maint.get("status") if maint else False
+        new_status = not current_status
+        await settings_col.update_one({"_id": "maintenance_mode"}, {"$set": {"status": new_status}}, upsert=True)
+        
+        status_text = "🟢 ON" if new_status else "🔴 OFF"
+        await callback_query.answer(f"Maintenance Mode is now {status_text}", show_alert=True)
+        
+        buttons = [
+            [InlineKeyboardButton(f"🛠 Maintenance Mode: {status_text}", callback_data="admin_maint")],
+            [InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart"), InlineKeyboardButton("📝 Logs Viewer", callback_data="admin_logs")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_home")]
+        ]
+        await callback_query.message.edit_text("🛠 **ADVANCED TOOLS**\n\nControl maintenance and system power:", reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif action == "stats":
         u = await users_col.count_documents({}) if users_col is not None else 0
         m = await movies_col.count_documents({}) if movies_col is not None else 0
         p = await posters_col.count_documents({}) if posters_col is not None else 0
@@ -454,6 +485,45 @@ async def advanced_broadcast(client, message):
     else:
         await status_msg.edit_text("❌ Database not initialized.")
 
+# ================= 📢 POST TO CHANNEL FEATURE =================
+@app.on_message(filters.command("post") & filters.private)
+async def post_to_channel(client, message):
+    if not await is_admin(message.from_user.id): return
+    
+    if len(message.command) < 2 or not message.reply_to_message:
+        return await message.reply_text(
+            "⚠️ **എങ്ങനെ ഉപയോഗിക്കാം:**\n\n"
+            "നിങ്ങൾക്ക് ചാനലിലേക്ക് അയക്കേണ്ട പോസ്റ്ററിനോ മെസ്സേജിനോ റിപ്ലൈ ആയി ഇങ്ങനെ ടൈപ്പ് ചെയ്യുക:\n"
+            "`/post @yourchannelusername`\nഅല്ലെങ്കിൽ\n`/post -100xxxxxxx`"
+        )
+        
+    target_channel = message.command[1]
+    status_msg = await message.reply_text("⏳ പോസ്റ്റ് ചെയ്യുന്നു...")
+    
+    reply_msg = message.reply_to_message
+    raw_text = reply_msg.text or reply_msg.caption or ""
+    clean_text = raw_text
+    buttons = []
+    
+    matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
+    for match in matches:
+        btn_text = match.group(1).strip()
+        btn_url = match.group(2).strip()
+        buttons.append([InlineKeyboardButton(btn_text, url=btn_url)])
+        clean_text = clean_text.replace(match.group(0), "")
+    
+    clean_text = clean_text.strip()
+    markup = InlineKeyboardMarkup(buttons) if buttons else reply_msg.reply_markup
+
+    try:
+        if reply_msg.media:
+            await reply_msg.copy(chat_id=target_channel, caption=clean_text if buttons else reply_msg.caption, reply_markup=markup)
+        else:
+            await client.send_message(chat_id=target_channel, text=clean_text if buttons else reply_msg.text, reply_markup=markup)
+            
+        await status_msg.edit_text(f"✅ **വിജയകരമായി {target_channel} ലേക്ക് പോസ്റ്റ് ചെയ്തു!**")
+    except Exception as e:
+        await status_msg.edit_text(f"❌ **പോസ്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല.**\n\nകാരണം: ബോട്ട് ആ ചാനലിൽ അഡ്മിൻ ആണോ എന്ന് ഉറപ്പുവരുത്തുക.\nError: `{e}`")
 
 # ================= 🚀 SEARCH & SAVE LOGIC =================
 @app.on_message(filters.photo & filters.channel)
@@ -593,45 +663,6 @@ async def verify_joined(client, callback_query):
                 await callback_query.answer("✅ Thank you for joining! Now you can search for movies.", show_alert=True)
         except Exception:
             await callback_query.answer("⚠️ You haven't joined the channel yet! Please join first.", show_alert=True)
-# ================= 📢 പോസ്റ്റ് ടു ചാനൽ ഫീച്ചർ =================
-@app.on_message(filters.command("post") & filters.private)
-async def post_to_channel(client, message):
-    if not await is_admin(message.from_user.id): return
-    
-    if len(message.command) < 2 or not message.reply_to_message:
-        return await message.reply_text(
-            "⚠️ **എങ്ങനെ ഉപയോഗിക്കാം:**\n\n"
-            "നിങ്ങൾക്ക് ചാനലിലേക്ക് അയക്കേണ്ട പോസ്റ്ററിനോ മെസ്സേജിനോ റിപ്ലൈ ആയി ഇങ്ങനെ ടൈപ്പ് ചെയ്യുക:\n"
-            "`/post @yourchannelusername`\nഅല്ലെങ്കിൽ\n`/post -100xxxxxxx`"
-        )
-        
-    target_channel = message.command[1]
-    status_msg = await message.reply_text("⏳ പോസ്റ്റ് ചെയ്യുന്നു...")
-    
-    reply_msg = message.reply_to_message
-    raw_text = reply_msg.text or reply_msg.caption or ""
-    clean_text = raw_text
-    buttons = []
-    
-    matches = re.finditer(r'\[([^|]+)\|([^\]]+)\]', raw_text)
-    for match in matches:
-        btn_text = match.group(1).strip()
-        btn_url = match.group(2).strip()
-        buttons.append([InlineKeyboardButton(btn_text, url=btn_url)])
-        clean_text = clean_text.replace(match.group(0), "")
-    
-    clean_text = clean_text.strip()
-    markup = InlineKeyboardMarkup(buttons) if buttons else reply_msg.reply_markup
-
-    try:
-        if reply_msg.media:
-            await reply_msg.copy(chat_id=target_channel, caption=clean_text if buttons else reply_msg.caption, reply_markup=markup)
-        else:
-            await client.send_message(chat_id=target_channel, text=clean_text if buttons else reply_msg.text, reply_markup=markup)
-            
-        await status_msg.edit_text(f"✅ **വിജയകരമായി {target_channel} ലേക്ക് പോസ്റ്റ് ചെയ്തു!**")
-    except Exception as e:
-        await status_msg.edit_text(f"❌ **പോസ്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല.**\n\nകാരണം: ബോട്ട് ആ ചാനലിൽ അഡ്മിൻ ആണോ എന്ന് ഉറപ്പുവരുത്തുക.\nError: `{e}`")
 
 # ================= 🚀 FINAL STARTUP =================
 if __name__ == "__main__":
