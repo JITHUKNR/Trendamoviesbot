@@ -1,20 +1,11 @@
-import sys
-import asyncio
-
-# --- CRITICAL FIX FOR PYTHON 3.12 & PYROGRAM BUG ---
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
-# ---------------------------------------------------
-
 import os
+import asyncio
+from threading import Thread
 import certifi
 import uuid
 import re
 from urllib.parse import quote
 from flask import Flask
-from threading import Thread
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client, filters
