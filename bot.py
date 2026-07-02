@@ -1,11 +1,20 @@
-import os
+import sys
 import asyncio
-from threading import Thread
+
+# --- CRITICAL FIX FOR PYTHON 3.12 & PYROGRAM BUG ---
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+# ---------------------------------------------------
+
+import os
 import certifi
 import uuid
 import re
 from urllib.parse import quote
 from flask import Flask
+from threading import Thread
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client, filters
@@ -599,10 +608,6 @@ async def advanced_broadcast(client, message):
 
 # ================= 🚀 FINAL STARTUP =================
 if __name__ == "__main__":
-    # വെബ് സെർവർ പുതിയ ത്രെഡിൽ റൺ ചെയ്യുന്നു (Render Port binding)
     Thread(target=run_server, daemon=True).start()
-    
     print("✅ Web Server & Bot Engine Started Successfully!", flush=True)
-    
-    # യാതൊരു ഇംപോർട്ടും ചെയ്യാതെ നേരെ ബോട്ട് റൺ ചെയ്യുന്നു
     app.run()
