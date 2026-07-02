@@ -2,9 +2,8 @@ import asyncio
 import os
 import sys
 import re
-from pyrogram import filters, types
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from bot import (
+from pyrogram import filters
+from config import (
     app, ADMIN_ID, is_admin, get_fsub_config, get_delete_time,
     users_col, movies_col, posters_col, settings_col, admins_col, searches_col
 )
