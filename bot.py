@@ -280,10 +280,10 @@ async def verify_joined(client, callback_query):
 
 # ================= SERVER & BOT STARTUP =================
 if __name__ == "__main__":
+    # വെബ് സെർവർ സ്റ്റാർട്ട് ചെയ്യുന്നു
     Thread(target=run_server, daemon=True).start()
+    
     print("Bot started successfully!", flush=True)
+    
+    # ബോട്ട് റൺ ആകുന്നു (ഇവിടെ import bot എന്ന് കൊടുക്കരുത്!)
     app.run()
-
-if __name__ == "__main__":
-    import bot
-    bot.start_bot()
