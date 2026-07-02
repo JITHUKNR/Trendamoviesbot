@@ -1,20 +1,14 @@
+import asyncio
 import os
-import uuid
-import certifi
-import re
-from pyrogram import Client, filters, enums, types
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import UserNotParticipant
 from flask import Flask
 from threading import Thread
-from urllib.parse import quote
-from motor.motor_asyncio import AsyncIOMotorClient
+from config import app, movies_col, users_col, searches_col, posters_col, settings_col, admins_col # config-ൽ നിന്ന് ഡാറ്റ എടുക്കുന്നു
 
 # --- Web Server ---
 web_app = Flask(__name__)
 @web_app.route('/')
 def home():
-    return "Trenda Bot is Running with Premium Ultimate Features!"
+    return "Trenda Bot is Running!"
 
 def run_server():
     port = int(os.environ.get("PORT", 8080))
@@ -287,15 +281,7 @@ async def verify_joined(client, callback_query):
 # ================= SERVER & BOT STARTUP =================
 if __name__ == "__main__":
     Thread(target=run_server, daemon=True).start()
-    
     print("Bot started successfully!", flush=True)
-    
-    # admin.py ലോഡ് ചെയ്യുന്നു
-    try:
-        import admin
-    except ImportError:
-        pass
-        
     app.run()
 
 if __name__ == "__main__":
